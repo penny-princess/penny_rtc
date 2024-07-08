@@ -6,6 +6,7 @@
 #pragma once
 
 #include <core.h>
+#include "worker.h"
 
 using namespace core;
 
@@ -22,6 +23,7 @@ namespace penny {
         IOEvent *_pipe_event = nullptr;
         std::thread *_thread = nullptr;
 
+        std::vector<Worker*> _workers;
     public:
         enum : int {
             QUIT = 0
@@ -43,11 +45,15 @@ namespace penny {
         int quit();
 
     private:
+        // stop logic
+        void _stop();
+        // init logic
+        int _create_worker(int worker_id);
+
+    private:
         // handle notify
         int _notify_send(int msg);
         void _notify_receive(EventLoop *loop, IOEvent *event, int fd, int events, void *data);
-        // stop logic
-        void _stop();
 
     };
 } // namespace penny::server

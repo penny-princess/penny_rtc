@@ -7,25 +7,8 @@
 
 namespace penny {
 
-    void Server::_notify_receive(EventLoop *, IOEvent *, int fd, int, void *) {
-        int msg;
-        int ret = read(fd, &msg, sizeof(int));
-        if (ret != sizeof(int)) {
-            LOG(WARN) << "read from pipe error: " << strerror(errno) << ", errno: " << errno;
-            return;
-        }
-        switch (msg) {
-            case QUIT:
-                _stop();
-                break;
-            default:
-                LOG(WARN) << "unknown msg: " << msg;
-                break;
-        }
-    }
-
     void accept_new_conn(EventLoop *, IOEvent *, int, int, void *) {
-        std::cout << "看看是否一直loop" << std::endl;
+        LOG(INFO) << "看看是否一直loop";
 
     }
 
@@ -62,6 +45,10 @@ namespace penny {
         }
         _io_event = _loop->create_io_event(accept_new_conn, this);
         _loop->start_io_event(_io_event, _listen_fd, EventLoop::READ);
+        for(int i = 0; i < 4; i++) {
+            int ret = _create_worker(i);
+            if(ret == -1) return -1;
+        }
         LOG(INFO) << "server init end";
         return 0;
     }
@@ -85,10 +72,6 @@ namespace penny {
         }
     }
 
-    int Server::quit() {
-        _notify_send(Server::QUIT);
-    }
-
     void Server::_stop() {
         LOG(INFO) << "server stopping";
         close(_notify_receive_fd);
@@ -99,6 +82,17 @@ namespace penny {
         LOG(INFO) << "server stopped";
     }
 
+    int Server::_create_worker(int worker_id) {
+        Worker* worker = new Worker(worker_id);
+        int ret = worker->init();
+        if(-1 == ret) return -1;
+        ret = worker->start();
+        if(-1 == ret) return -1;
+        _workers.push_back(worker);
+        return 0;
+    }
+
+
     int Server::_notify_send(int msg) {
         int ret = write(_notify_send_fd, &msg, sizeof(int));
         if(ret != sizeof(int)) {
@@ -106,4 +100,25 @@ namespace penny {
         }
         return 0;
     }
-} // namespace penny::server
+
+    void Server::_notify_receive(EventLoop *, IOEvent *, int fd, int, void *) {
+        int msg;
+        int ret = read(fd, &msg, sizeof(int));
+        if (ret != sizeof(int)) {
+            LOG(WARN) << "read from pipe error: " << strerror(errno) << ", errno: " << errno;
+            return;
+        }
+        switch (msg) {
+            case QUIT:
+                _stop();
+                break;
+            default:
+                LOG(WARN) << "unknown msg: " << msg;
+                break;
+        }
+    }
+
+    int Server::quit() {
+        _notify_send(Server::QUIT);
+    }
+} // namespace penny

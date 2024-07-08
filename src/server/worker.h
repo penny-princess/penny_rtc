@@ -13,12 +13,13 @@ namespace penny {
 
     class Worker {
     private:
+        int _worker_id = -1;
         int _notify_receive_fd = -1;
         int _notify_send_fd = -1;
 
         EventLoop *_loop = nullptr;
         IOEvent *_io_event = nullptr;
-        IOEvent *_pipe_watcher = nullptr;
+        IOEvent *_pipe_event = nullptr;
         std::thread *_thread = nullptr;
 
     public:
@@ -26,26 +27,28 @@ namespace penny {
             QUIT = 0,
             NEW_CONNECTION = 1
         };
-        Worker();
+
+        Worker(int worker_id);
+
         ~Worker();
 
-        void start();
+        int init();
+
+        int start();
 
         void join();
 
         int quit();
 
     private:
-        // business logic
+        // stop logic
+        void _stop();
+        // server business logic
         void _handle_new_connection();
-
     private:
         // handle notify
         int _notify_send(int msg);
         void _notify_receive(EventLoop *, IOEvent *, int fd, int, void *);
-
-        // stop logic
-        void _stop();
 
     };
 }

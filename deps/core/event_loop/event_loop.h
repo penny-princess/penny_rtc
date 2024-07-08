@@ -1,25 +1,35 @@
+//
+// Created by penny_developers@outlook.com on 2024-07-08.
+// Copyright (c) 2024 penny_developers@outlook.com . All rights reserved.
+//
+
 #pragma once
 
-namespace core {
+#include "pch.h"
 
+namespace core {
     class EventLoop;
 
-    class IOWatcher;
+    class IOEvent;
 
-    class TimerWatcher;
+    class TimerEvent;
 
-    typedef void (*io_cb_t)(EventLoop *el, IOWatcher *w, int fd, int events, void *data);
-
-    typedef void (*time_cb_t)(EventLoop *el, TimerWatcher *w, void *data);
+    using io_callback = std::function<void(EventLoop *el, IOEvent *event, int fd, int events, void *data)>;
+    using timer_callback = std::function<void(EventLoop *el, TimerEvent *w, void *data)>;
 
     class EventLoop {
-    public:
-        enum {
-            READ = 0x1,
-            WRITE = 0x2
-        };
+    private:
+        int _epoll_fd = -1;
+        void *_owner = nullptr;
+        bool _running = false;
+        std::vector<epoll_event> _events;
 
-        EventLoop(void *owner);
+    public:
+        enum : int {
+            READ = EPOLLIN,
+            WRITE = EPOLLOUT
+        };
+        EventLoop(void * owner);
 
         ~EventLoop();
 
@@ -27,31 +37,46 @@ namespace core {
 
         void stop();
 
-        void *owner() { return _owner; }
+        void *owner();
+    public:
+        IOEvent *create_io_event(io_callback, void *data);
 
-        unsigned long now();
+        int start_io_event(IOEvent *io_event, int fd, int mask);
 
-        IOWatcher *create_io_event(io_cb_t cb, void *data);
+        int stop_io_event(IOEvent *io_event, int fd, int mask);
 
-        void start_io_event(IOWatcher *w, int fd, int mask);
+        void delete_io_event(IOEvent *io_event);
 
-        void stop_io_event(IOWatcher *w, int fd, int mask);
+    public:
+        TimerEvent *create_timer(timer_callback, void *data, bool repeat);
 
-        void delete_io_event(IOWatcher *w);
+        void start_timer_event(TimerEvent *timer_event, unsigned int usec);
 
-        TimerWatcher *create_timer(time_cb_t cb, void *data, bool need_repeat);
+        void stop_timer_event(TimerEvent *timer_event);
 
-        void start_timer(TimerWatcher *w, unsigned int usec);
-
-        void stop_timer(TimerWatcher *w);
-
-        void delete_timer(TimerWatcher *w);
-
-    private:
-        void *_owner;
-        struct ev_loop *_loop;
+        void delete_timer_event(TimerEvent *timer_event);
     };
 
-} // namespace core
+    class TimerEvent {
+        public:
+            EventLoop* loop;
+            timer_callback callback;
+            void* data;
+            bool repeat;
+            int interval;
 
+        public:
+            TimerEvent(EventLoop* loop, timer_callback callback, void* data, bool repeat): loop(loop),callback(callback), data(data), repeat(repeat) {};
+    };
 
+    class IOEvent {
+        public:
+            EventLoop* loop = nullptr;
+            io_callback callback;
+            void* data = nullptr;
+            int fd = -1;
+        public:
+            IOEvent(EventLoop* loop, io_callback callback, void* data): loop(loop),callback(callback), data(data) {}
+    };
+
+}

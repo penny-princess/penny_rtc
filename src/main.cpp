@@ -1,7 +1,39 @@
 #include <iostream>
-#include <event_loop/event_loop.h>
+#include <csignal>
+#include "server/server.h"
+
+using namespace penny;
+Server* server = nullptr;
+
+static void process_signal(int sig) {
+    if (SIGINT == sig || SIGTERM == sig) {
+        if (server) {
+            server->quit();
+        }
+    }
+}
+
+int init_server() {
+    server = new Server();
+    int ret = server->init();
+    if (ret != 0) {
+        return -1;
+    }
+    ret = server->start();
+    if (ret != 0) {
+        return -1;
+    }
+    return 0;
+
+}
 
 int main() {
-    std::cout << "Hello, World!" << std::endl;
+    signal(SIGINT, process_signal);
+    signal(SIGTERM, process_signal);
+    int ret = init_server();
+    if(ret != 0) {
+        return -1;
+    }
+    server->join();
     return 0;
 }

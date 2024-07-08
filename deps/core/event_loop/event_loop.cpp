@@ -1,158 +1,81 @@
-#include <ev.h>
+//
+// Created by penny_developers@outlook.com on 2024-07-08.
+// Copyright (c) 2024 penny_developers@outlook.com . All rights reserved.
+//
 
-#include "event_loop/event_loop.h"
-
-#define TRANS_TO_EV_MASK(mask) \
-    (((mask) & EventLoop::READ ? EV_READ : 0) | ((mask) & EventLoop::WRITE ? EV_WRITE : 0))
-
-#define TRANS_FROM_EV_MASK(mask) \
-    (((mask) & EV_READ ? EventLoop::READ : 0) | ((mask) & EV_WRITE ? EventLoop::WRITE : 0))
+#include "event_loop.h"
 
 namespace core {
 
-    EventLoop::EventLoop(void *owner) :
-            _owner(owner),
-            _loop(ev_loop_new(EVFLAG_AUTO)) {
-
+    EventLoop::EventLoop(void *owner):_events(1024) {
+        this->_owner = owner;
+        _epoll_fd = epoll_create1(0);
+        if (_epoll_fd == -1) {
+            exit(-1);
+        }
     }
 
     EventLoop::~EventLoop() {
-
+        ::close(_epoll_fd);
     }
 
     void EventLoop::start() {
-        ev_run(_loop);
+        _running = true;
+
+        while (_running) {
+            int num_events = epoll_wait(_epoll_fd, _events.data(), _events.size(), -1);
+            if (num_events == -1) {
+                if (errno == EINTR) continue;
+                throw std::runtime_error("epoll_wait failed");
+            }
+            for (int i = 0; i < num_events; ++i) {
+                IOEvent *io_event = static_cast<IOEvent*>(_events[i].data.ptr);
+                if (io_event && io_event->callback) {
+                    io_event->callback(this, io_event, io_event->fd, _events[i].events, io_event->data);
+                }
+            }
+            if(num_events >= static_cast<int>(_events.size()) ) {
+                _events.resize(_events.size() * 2);
+            }
+        }
     }
 
     void EventLoop::stop() {
-        ev_break(_loop, EVBREAK_ALL);
+        _running = false;
     }
 
-    unsigned long EventLoop::now() {
-        return static_cast<unsigned long>(ev_now(_loop) * 1000000);
+    void *EventLoop::owner() {
+        return _owner;
     }
 
-    class IOWatcher {
-    public:
-        IOWatcher(EventLoop *el, io_cb_t cb, void *data) :
-                el(el), cb(cb), data(data) {
-            io.data = this;
+    IOEvent* EventLoop::create_io_event(io_callback callback, void* data) {
+        return new IOEvent(this, callback, data);
+    }
+
+    int EventLoop::start_io_event(IOEvent *io_event, int fd, int mask) {
+        epoll_event event;
+        event.events = mask;
+        event.data.ptr = io_event;
+        io_event->fd = fd;
+        int ret = epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, fd, &event);
+        if(-1 == ret) {
+            return -1;
         }
-
-    public:
-        EventLoop *el;
-        ev_io io;
-        io_cb_t cb;
-        void *data;
-    };
-
-    static void generic_io_cb(struct ev_loop * /*loop*/, struct ev_io *io, int events) {
-        IOWatcher *watcher = (IOWatcher *) (io->data);
-        watcher->cb(watcher->el, watcher, io->fd, TRANS_FROM_EV_MASK(events),
-                    watcher->data);
+        return 0;
     }
 
-    IOWatcher *EventLoop::create_io_event(io_cb_t cb, void *data) {
-        IOWatcher *w = new IOWatcher(this, cb, data);
-        ev_init(&(w->io), generic_io_cb);
-        return w;
-    }
-
-    void EventLoop::start_io_event(IOWatcher *w, int fd, int mask) {
-        struct ev_io *io = &(w->io);
-        if (ev_is_active(io)) {
-            int active_events = TRANS_FROM_EV_MASK(io->events);
-            int events = active_events | mask;
-            if (events == active_events) {
-                return;
-            }
-
-            events = TRANS_TO_EV_MASK(events);
-            ev_io_stop(_loop, io);
-            ev_io_set(io, fd, events);
-            ev_io_start(_loop, io);
-        } else {
-            int events = TRANS_TO_EV_MASK(mask);
-            ev_io_set(io, fd, events);
-            ev_io_start(_loop, io);
+    int EventLoop::stop_io_event(IOEvent* io_event, int fd, int mask) {
+        epoll_event ev = {};
+        ev.events = mask;
+        ev.data.ptr = io_event;
+        int ret = epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, fd, &ev);
+        if ( ret == -1) {
+            return -1;
         }
+        return 0;
     }
 
-    void EventLoop::stop_io_event(IOWatcher *w, int fd, int mask) {
-        struct ev_io *io = &(w->io);
-        int active_events = TRANS_FROM_EV_MASK(io->events);
-        int events = active_events & ~mask;
-
-        if (events == active_events) {
-            return;
-        }
-
-        events = TRANS_TO_EV_MASK(events);
-        ev_io_stop(_loop, io);
-
-        if (events != EV_NONE) {
-            ev_io_set(io, fd, events);
-            ev_io_start(_loop, io);
-        }
+    void EventLoop::delete_io_event(IOEvent* io_event) {
+        delete io_event;
     }
-
-    void EventLoop::delete_io_event(IOWatcher *w) {
-        struct ev_io *io = &(w->io);
-        ev_io_stop(_loop, io);
-        delete w;
-    }
-
-    class TimerWatcher {
-    public:
-        TimerWatcher(EventLoop *el, time_cb_t cb, void *data, bool need_repeat) :
-                el(el), cb(cb), data(data), need_repeat(need_repeat) {
-            timer.data = this;
-        }
-
-    public:
-        EventLoop *el;
-        struct ev_timer timer;
-        time_cb_t cb;
-        void *data;
-        bool need_repeat;
-    };
-
-    static void generic_time_cb(struct ev_loop * /*loop*/, struct ev_timer *timer, int /*events*/) {
-        TimerWatcher *watcher = (TimerWatcher *) (timer->data);
-        watcher->cb(watcher->el, watcher, watcher->data);
-    }
-
-    TimerWatcher *EventLoop::create_timer(time_cb_t cb, void *data, bool need_repeat) {
-        TimerWatcher *watcher = new TimerWatcher(this, cb, data, need_repeat);
-        ev_init(&(watcher->timer), generic_time_cb);
-        return watcher;
-    }
-
-    void EventLoop::start_timer(TimerWatcher *w, unsigned int usec) {
-        struct ev_timer *timer = &(w->timer);
-        float sec = float(usec) / 1000000;
-
-        if (!w->need_repeat) {
-            ev_timer_stop(_loop, timer);
-            ev_timer_set(timer, sec, 0);
-            ev_timer_start(_loop, timer);
-        } else {
-            timer->repeat = sec;
-            ev_timer_again(_loop, timer);
-        }
-    }
-
-    void EventLoop::stop_timer(TimerWatcher *w) {
-        struct ev_timer *timer = &(w->timer);
-        ev_timer_stop(_loop, timer);
-    }
-
-    void EventLoop::delete_timer(TimerWatcher *w) {
-        stop_timer(w);
-        delete w;
-    }
-
-
-} // namespace core
-
-
+}

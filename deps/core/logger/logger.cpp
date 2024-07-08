@@ -46,14 +46,13 @@ namespace core {
     void Logger::stop() {
         _running = false;
 
-        if (_thread) {
-            if (_thread->joinable()) {
-                _thread->join();
-            }
-
-            delete _thread;
-            _thread = nullptr;
+        if (_thread->joinable()) {
+            _thread->join();
         }
+        
+        delete _thread;
+        _thread = nullptr;
+    
     }
 
     void Logger::join() {

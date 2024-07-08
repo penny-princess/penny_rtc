@@ -72,7 +72,7 @@ namespace core {
 
         template<class T>
         LogStream &operator<<(const T &value) {
-            _stream << "  " << value;
+            _stream << value;
             return *this;
         }
 

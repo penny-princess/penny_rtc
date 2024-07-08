@@ -25,7 +25,7 @@ namespace penny {
     }
 
     int Worker::init() {
-        LOG(INFO) << "worker init starting";
+        LOG(INFO) << "worker init starting, worker_id:" << _worker_id;
         int fds[2];
         if(pipe(fds)) {
             LOG(WARN) << "pipe create error: " << strerror(errno) << ", errno: " << errno;
@@ -35,19 +35,19 @@ namespace penny {
         _notify_send_fd = fds[1];
         _pipe_event = _loop->create_io_event(std::bind(&Worker::_notify_receive, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5), this);
         _loop->start_io_event(_pipe_event, _notify_receive_fd, EventLoop::READ);
-        LOG(INFO) << "worker init end";
+        LOG(INFO) << "worker init end, worker_id:" << _worker_id;
         return 0;
     }
 
     int Worker::start() {
         if(_thread) {
-            LOG(WARN) << "thread already start";
+            LOG(WARN) << "thread already start, worker_id:" << _worker_id;
             return -1;
         }
         _thread = new std::thread([=]() {
             LOG(INFO) << "worker start";
             _loop->start();
-            LOG(INFO) << "worker end";
+            LOG(INFO) << "worker end, worker_id:" << _worker_id;
         });
         return 0;
     }
@@ -59,13 +59,13 @@ namespace penny {
     }
 
     void Worker::_stop() {
-        LOG(INFO) << "worker stopping";
+        LOG(INFO) << "worker stopping, worker_id:" << _worker_id;
         close(_notify_receive_fd);
         close(_notify_send_fd);
 
         _loop->delete_io_event(_pipe_event);
         _loop->stop();
-        LOG(INFO) << "worker stopped";
+        LOG(INFO) << "worker stopped, worker_id:" << _worker_id;
     }
 
     int Worker::_notify_send(int msg) {
@@ -79,6 +79,7 @@ namespace penny {
     void Worker::_notify_receive(EventLoop *, IOEvent *, int fd, int, void *) {
         int msg;
         int ret = read(fd, &msg, sizeof(int));
+        LOG(INFO) << "test";
         if (ret != sizeof(int)) {
             LOG(WARN) << "read from pipe error: " << strerror(errno) << ", errno: " << errno;
             return;
@@ -96,6 +97,6 @@ namespace penny {
     }
 
     int Worker::quit() {
-
+        return _notify_send(QUIT);
     }
 }

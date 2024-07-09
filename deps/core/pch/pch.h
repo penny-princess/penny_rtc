@@ -24,3 +24,4 @@
 #include <atomic>
 #include <fstream>
 #include <sys/syscall.h>
+#include <csignal>

@@ -1,6 +1,5 @@
-#include <iostream>
-#include <csignal>
 #include "server/server.h"
+#include <core.h>
 
 using namespace penny;
 Server* server = nullptr;
@@ -11,6 +10,11 @@ static void process_signal(int sig) {
         if (server) {
             server->quit();
         }
+
+        if(logger) {
+            logger->stop();
+        }
+
     }
 }
 
@@ -24,12 +28,14 @@ int init_server() {
     if (ret != 0) {
         return -1;
     }
+
     return 0;
 
 }
 
 int main() {
     logger = Logger::instance();
+    logger->set_level(INFO);
     logger->init();
 
     signal(SIGINT, process_signal);
@@ -39,6 +45,6 @@ int main() {
         return -1;
     }
     server->join();
-    logger->stop();
+    logger->join();
     return 0;
 }

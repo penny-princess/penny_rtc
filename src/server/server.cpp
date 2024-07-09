@@ -74,11 +74,17 @@ namespace penny {
 
     void Server::_stop() {
         LOG(INFO) << "server stopping";
+        close(_listen_fd);
         close(_notify_receive_fd);
         close(_notify_send_fd);
 
         _loop->delete_io_event(_pipe_event);
         _loop->stop();
+
+        for(const auto& item: _workers) {
+            item->quit();
+            item->join();
+        }
         LOG(INFO) << "server stopped";
     }
 

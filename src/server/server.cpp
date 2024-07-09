@@ -79,6 +79,7 @@ namespace penny {
         close(_notify_send_fd);
 
         _loop->delete_io_event(_pipe_event);
+        _loop->delete_io_event(_io_event);
         _loop->stop();
 
         for(const auto& item: _workers) {

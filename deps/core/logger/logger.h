@@ -46,7 +46,6 @@ namespace core {
     private:
 
         int _thread_start();
-
         void _join();
 
     private:

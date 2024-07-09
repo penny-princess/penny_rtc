@@ -96,6 +96,6 @@ namespace penny {
     }
 
     int Worker::quit() {
-
+        return 0;
     }
 }

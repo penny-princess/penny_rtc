@@ -4,6 +4,7 @@
 
 using namespace penny;
 Server* server = nullptr;
+Logger* logger = nullptr;
 
 static void process_signal(int sig) {
     if (SIGINT == sig || SIGTERM == sig) {
@@ -28,6 +29,9 @@ int init_server() {
 }
 
 int main() {
+    logger = Logger::instance();
+    logger->init();
+
     signal(SIGINT, process_signal);
     signal(SIGTERM, process_signal);
     int ret = init_server();
@@ -35,5 +39,6 @@ int main() {
         return -1;
     }
     server->join();
+    logger->stop();
     return 0;
 }

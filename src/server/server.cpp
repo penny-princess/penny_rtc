@@ -119,6 +119,6 @@ namespace penny {
     }
 
     int Server::quit() {
-        _notify_send(Server::QUIT);
+        return _notify_send(Server::QUIT);
     }
 } // namespace penny

@@ -39,21 +39,23 @@ namespace core {
     Logger::~Logger() {
         stop();
         _out_file.close();
+        if (_thread) {
+            delete _thread;
+            _thread = nullptr;
+        }
+
+        delete _thread;
+        _thread = nullptr;
+
     }
 
     void Logger::stop() {
         _running = false;
-
-        if (_thread->joinable()) {
-            _thread->join();
-        }
-        
-        delete _thread;
-        _thread = nullptr;
-    
+        _cv.notify_all();
+        this->_join();
     }
 
-    void Logger::join() {
+    void Logger::_join() {
         if (_thread && _thread->joinable()) {
             _thread->join();
         }
@@ -75,8 +77,11 @@ namespace core {
         if (_stderr) {
             std::cout << msg << std::flush;
         }
-        std::unique_lock<std::mutex> lock(_mtx);
-        _log_queue.push(msg);
+        {
+            std::unique_lock<std::mutex> lock(_mtx);
+            _log_queue.push(msg);
+        }
+        _cv.notify_one();
     }
 
     Logger *Logger::instance() {
@@ -160,29 +165,30 @@ namespace core {
             struct stat stat_data;
             std::stringstream ss;
             while (_running) {
+                {
+                    std::unique_lock<std::mutex> lock(_mtx);
+                    _cv.wait(lock, [this] { return !_log_queue.empty() || !_running; });
+
+                    if (!_running && _log_queue.empty()) {
+                        break;
+                    }
+
+                    while (!_log_queue.empty()) {
+                        ss << _log_queue.front();
+                        _log_queue.pop();
+                    }
+                }
+
                 if (stat(_log_file.c_str(), &stat_data) < 0) {
                     _out_file.close();
                     _out_file.open(_log_file, std::ios::app);
                 }
-                bool write_log = false;
-                {
-                    std::unique_lock<std::mutex> lock(_mtx);
-                    if (!_log_queue.empty()) {
-                        write_log = true;
-                        while (!_log_queue.empty()) {
-                            ss << _log_queue.front();
-                            _log_queue.pop();
-                        }
-                    }
-                }
-                if (write_log) {
-                    _out_file << ss.str();
-                    _out_file.flush();
-                }
+                _out_file << ss.str();
+                _out_file.flush();
                 ss.str("");
-                std::this_thread::sleep_for(std::chrono::milliseconds(30));
             }
         });
         return 0;
     }
+
 }

@@ -10,10 +10,11 @@ static void process_signal(int sig) {
         if (server) {
             server->quit();
         }
-        
-        if(logger && !server) {
+
+        if(logger) {
             logger->stop();
         }
+
     }
 }
 

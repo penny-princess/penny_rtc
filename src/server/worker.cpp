@@ -67,10 +67,11 @@ namespace penny {
         return _notify_send(NEW_CONNECTION);
     }
 
-    void Worker::_handle_new_connection(int fd) {
-        
-        LOG(INFO) << "_worker_id: ["<< _worker_id << "]" << "fd: ["<< fd << "]";
-    
+    void Worker::_handle_new_connection(int client_fd) {
+        LOG(INFO) << "_worker_id: ["<< _worker_id << "]" << "fd: ["<< client_fd << "]";
+
+        sock_set_nodelay(client_fd);
+        sock_setnonblock(client_fd);
     }
 
     void Worker::_stop() {

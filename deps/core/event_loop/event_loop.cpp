@@ -4,6 +4,9 @@
 //
 
 #include "event_loop.h"
+#include <sys/timerfd.h>
+#include <chrono>
+#include <stdexcept>
 
 namespace core {
 
@@ -64,11 +67,10 @@ namespace core {
         return 0;
     }
 
-    int EventLoop::stop_io_event(IOEvent* io_event, int fd, int mask) {
-        epoll_event ev = {};
-        ev.events = mask;
+    int EventLoop::stop_io_event(IOEvent* io_event) {
+        epoll_event ev;
         ev.data.ptr = io_event;
-        int ret = epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, fd, &ev);
+        int ret = epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, io_event->fd, &ev);
         if ( ret == -1) {
             return -1;
         }
@@ -76,6 +78,59 @@ namespace core {
     }
 
     void EventLoop::delete_io_event(IOEvent* io_event) {
+        stop_io_event(io_event);
         delete io_event;
+    }
+
+    TimerEvent* EventLoop::create_timer_event(timer_callback callback, void* data,bool repeat) {
+        return new TimerEvent(this, callback, data, repeat);
+    }
+
+    void EventLoop::start_timer_event(TimerEvent *timer_event, unsigned int usec) {
+        int timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+        if (timer_fd == -1) {
+            throw std::runtime_error("Failed to create timer file descriptor");
+        }
+
+        struct itimerspec ts;
+        ts.it_value.tv_sec = usec / 1000000;
+        ts.it_value.tv_nsec = (usec % 1000000) * 1000;
+        ts.it_interval.tv_sec = timer_event->repeat ? ts.it_value.tv_sec : 0;
+        ts.it_interval.tv_nsec = timer_event->repeat ? ts.it_value.tv_nsec : 0;
+
+        if (timerfd_settime(timer_fd, 0, &ts, nullptr) == -1) {
+            close(timer_fd);
+            throw std::runtime_error("Failed to set timer");
+        }
+
+        epoll_event ev;
+        ev.events = EPOLLIN;
+        ev.data.ptr = timer_event;
+        if (epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, timer_fd, &ev) == -1) {
+            close(timer_fd);
+            throw std::runtime_error("Failed to add timer file descriptor to epoll");
+        }
+
+        timer_event->fd = timer_fd;
+    }
+
+    void EventLoop::stop_timer_event(TimerEvent *timer_event) {
+        epoll_event ev;
+        ev.events = EPOLLIN;
+        ev.data.ptr = timer_event;
+        if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, timer_event->fd, &ev) == -1) {
+            throw std::runtime_error("Failed to remove timer file descriptor from epoll");
+        }
+        close(timer_event->fd);
+        timer_event->fd = -1;
+    }
+
+    void EventLoop::delete_timer_event(TimerEvent *timer_event) {
+        epoll_event ev;
+        ev.events = EPOLLIN;
+        if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, timer_event->fd, &ev) == -1) {
+            throw std::runtime_error("Failed to remove timer file descriptor from epoll");
+        }
+        delete timer_event;
     }
 }

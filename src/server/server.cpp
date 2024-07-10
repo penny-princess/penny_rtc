@@ -69,13 +69,14 @@ namespace penny {
 
     void Server::_stop() {
         LOG(INFO) << "server stopping";
-        close(_listen_fd);
-        close(_notify_receive_fd);
-        close(_notify_send_fd);
 
         _loop->delete_io_event(_pipe_event);
         _loop->delete_io_event(_io_event);
         _loop->stop();
+
+        close(_listen_fd);
+        close(_notify_receive_fd);
+        close(_notify_send_fd);
 
         for(const auto& item: _workers) {
             item->quit();
@@ -98,8 +99,6 @@ namespace penny {
         char ip[128];
         int port;
         int client_fd = tcp_accept(fd, ip, &port);
-        sock_set_nodelay(client_fd);
-        sock_setnonblock(client_fd);
 
         if(_worker_index >= _workers.size()) {
             _worker_index = 0;
@@ -107,7 +106,7 @@ namespace penny {
         
         LOG(INFO) << "worker.size: [" << _workers.size() << "],_worker_index: [" << _worker_index << "]";
         Worker* worker = _workers[_worker_index];
-        worker->new_connection(fd);
+        worker->new_connection(client_fd);
         _worker_index++;
     }
 

@@ -6,7 +6,6 @@
 #pragma once
 
 #include <core.h>
-
 using namespace core;
 
 namespace penny {
@@ -47,7 +46,7 @@ namespace penny {
         // stop logic
         void _stop();
         // server business logic
-        void _handle_new_connection(int fd);
+        void _handle_new_connection(int client_fd);
     private:
         // handle notify
         int _notify_send(int msg);

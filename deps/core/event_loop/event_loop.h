@@ -14,8 +14,8 @@ namespace core {
 
     class TimerEvent;
 
-    using io_callback = std::function<void(EventLoop *el, IOEvent *event, int fd, int events, void *data)>;
-    using timer_callback = std::function<void(EventLoop *el, TimerEvent *w, void *data)>;
+    using io_callback = std::function<void(EventLoop *loop, IOEvent *event, int fd, int events, void *data)>;
+    using timer_callback = std::function<void(EventLoop *loop, TimerEvent *w, void *data)>;
 
     class EventLoop {
     private:
@@ -43,12 +43,12 @@ namespace core {
 
         int start_io_event(IOEvent *io_event, int fd, int mask);
 
-        int stop_io_event(IOEvent *io_event, int fd, int mask);
+        int stop_io_event(IOEvent *io_event);
 
         void delete_io_event(IOEvent *io_event);
 
     public:
-        TimerEvent *create_timer(timer_callback, void *data, bool repeat);
+        TimerEvent* create_timer_event(timer_callback, void *data, bool repeat);
 
         void start_timer_event(TimerEvent *timer_event, unsigned int usec);
 
@@ -64,6 +64,7 @@ namespace core {
             void* data;
             bool repeat;
             int interval;
+            int fd;
 
         public:
             TimerEvent(EventLoop* loop, timer_callback callback, void* data, bool repeat): loop(loop),callback(callback), data(data), repeat(repeat) {};

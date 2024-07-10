@@ -21,7 +21,7 @@ namespace core {
 
     int sock_setnonblock(int sock);
 
-    int sock_setnodelay(int sock);
+    int sock_set_nodelay(int sock);
 
     int sock_peer_to_str(int sock, char *ip, int *port);
 

@@ -9,4 +9,5 @@ else
     echo "make"
     make -j10
     ./penny_rtc
+    cd ..
 fi

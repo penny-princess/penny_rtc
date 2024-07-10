@@ -18,7 +18,6 @@ namespace penny {
         int _notify_send_fd = -1;
 
         EventLoop *_loop = nullptr;
-        IOEvent *_io_event = nullptr;
         IOEvent *_pipe_event = nullptr;
         std::thread *_thread = nullptr;
 

@@ -13,14 +13,14 @@ namespace penny {
     }
 
     Worker::~Worker() {
-        if(_loop != nullptr) {
-            delete _loop;
-            _loop = nullptr;
-        }
-
-        if(_thread != nullptr) {
+        if(_thread) {
             delete _thread;
             _thread = nullptr;
+        }
+
+        if(_loop) {
+            delete _loop;
+            _loop = nullptr;
         }
     }
 
@@ -63,13 +63,14 @@ namespace penny {
     }
 
     int Worker::new_connection(int fd) {
-        LOG(INFO) << fd;
         _lock_free_queue.produce(fd);
         return _notify_send(NEW_CONNECTION);
     }
 
     void Worker::_handle_new_connection(int fd) {
-        LOG(INFO) << fd;
+        
+        LOG(INFO) << "_worker_id: ["<< _worker_id << "]" << "fd: ["<< fd << "]";
+    
     }
 
     void Worker::_stop() {

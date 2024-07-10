@@ -94,16 +94,22 @@ namespace penny {
         return 0;
     }
 
-        void Server::_io_listen(EventLoop *, IOEvent *, int fd, int, void *) {
-            LOG(INFO) << "看看是否一直loop";
-            if(_worker_index >= _workers.size()) {
-                _worker_index = 0;
-            }
-            Worker* worker = _workers[_worker_index];
-            worker->new_connection(fd);
-            _worker_index+=1;
-        }
+    void Server::_io_listen(EventLoop *, IOEvent *, int fd, int, void *) {
+        char ip[128];
+        int port;
+        int client_fd = tcp_accept(fd, ip, &port);
+        sock_set_nodelay(client_fd);
+        sock_setnonblock(client_fd);
 
+        if(_worker_index >= _workers.size()) {
+            _worker_index = 0;
+        }
+        
+        LOG(INFO) << "worker.size: [" << _workers.size() << "],_worker_index: [" << _worker_index << "]";
+        Worker* worker = _workers[_worker_index];
+        worker->new_connection(fd);
+        _worker_index++;
+    }
 
     int Server::_notify_send(int msg) {
         int ret = write(_notify_send_fd, &msg, sizeof(int));

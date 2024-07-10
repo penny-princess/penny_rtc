@@ -110,7 +110,7 @@ int sock_setnonblock(int sock) {
     return 0;
 }
 
-int sock_setnodelay(int sock) {
+int sock_set_nodelay(int sock) {
     int yes = 1;
     int ret = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
     if (-1 == ret) {

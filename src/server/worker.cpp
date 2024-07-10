@@ -57,6 +57,20 @@ namespace penny {
             _thread->join();
         }
     }
+    
+    int Worker::quit() {
+        return _notify_send(QUIT);
+    }
+
+    int Worker::new_connection(int fd) {
+        LOG(INFO) << fd;
+        _lock_free_queue.produce(fd);
+        return _notify_send(NEW_CONNECTION);
+    }
+
+    void Worker::_handle_new_connection(int fd) {
+        LOG(INFO) << fd;
+    }
 
     void Worker::_stop() {
         LOG(INFO) << "worker stopping, worker_id:" << _worker_id;
@@ -89,14 +103,14 @@ namespace penny {
                 _stop();
                 break;
             case NEW_CONNECTION:
+                int fd;
+                if(_lock_free_queue.consume(&fd)) {
+                    _handle_new_connection(fd);
+                }
                 break;
             default:
                 LOG(WARN) << "unknown msg: " << msg;
                 break;
         }
-    }
-
-    int Worker::quit() {
-        return _notify_send(QUIT);
     }
 }

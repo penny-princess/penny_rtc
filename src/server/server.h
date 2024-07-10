@@ -24,13 +24,11 @@ namespace penny {
         std::thread *_thread = nullptr;
 
         std::vector<Worker*> _workers;
+        size_t _worker_index = 0;
     public:
         enum : int {
             QUIT = 0
         };
-
-        // handle io receive message
-        friend void accept_new_conn(EventLoop *loop, IOEvent *event, int fd, int events, void *data);
 
         Server();
 
@@ -49,6 +47,8 @@ namespace penny {
         void _stop();
         // init logic
         int _create_worker(int worker_id);
+        // handle server business
+        void _io_listen(EventLoop *loop, IOEvent *event, int fd, int events, void *data);
 
     private:
         // handle notify

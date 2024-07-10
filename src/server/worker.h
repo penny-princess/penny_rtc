@@ -22,6 +22,8 @@ namespace penny {
         IOEvent *_pipe_event = nullptr;
         std::thread *_thread = nullptr;
 
+        LockFreeQueue<int> _lock_free_queue;
+
     public:
         enum {
             QUIT = 0,
@@ -40,11 +42,13 @@ namespace penny {
 
         int quit();
 
+        int new_connection(int fd);
+
     private:
         // stop logic
         void _stop();
         // server business logic
-        void _handle_new_connection();
+        void _handle_new_connection(int fd);
     private:
         // handle notify
         int _notify_send(int msg);

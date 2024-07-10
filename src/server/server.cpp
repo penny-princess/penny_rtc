@@ -7,11 +7,6 @@
 
 namespace penny {
 
-    void accept_new_conn(EventLoop *, IOEvent *, int, int, void *) {
-        LOG(INFO) << "看看是否一直loop";
-
-    }
-
     Server::Server() : _loop(new EventLoop(this)) {}
 
     Server::~Server() {
@@ -43,7 +38,7 @@ namespace penny {
         if(_listen_fd == -1) {
             return -1;
         }
-        _io_event = _loop->create_io_event(accept_new_conn, this);
+        _io_event = _loop->create_io_event(std::bind(&Server::_io_listen,this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5), this);
         _loop->start_io_event(_io_event, _listen_fd, EventLoop::READ);
         for(int i = 0; i < 4; i++) {
             int ret = _create_worker(i);
@@ -98,6 +93,16 @@ namespace penny {
         _workers.push_back(worker);
         return 0;
     }
+
+        void Server::_io_listen(EventLoop *, IOEvent *, int fd, int, void *) {
+            LOG(INFO) << "看看是否一直loop";
+            if(_worker_index >= _workers.size()) {
+                _worker_index = 0;
+            }
+            Worker* worker = _workers[_worker_index];
+            worker->new_connection(fd);
+            _worker_index+=1;
+        }
 
 
     int Server::_notify_send(int msg) {

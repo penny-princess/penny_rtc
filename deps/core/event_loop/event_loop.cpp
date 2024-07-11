@@ -133,4 +133,11 @@ namespace core {
         }
         delete timer_event;
     }
+
+    unsigned long EventLoop::now() {
+        using namespace std::chrono;
+        auto now = steady_clock::now().time_since_epoch();
+        double now_double = duration_cast<duration<double>>(now).count();
+        return static_cast<unsigned long>(now_double * 1000000);
+    }
 }

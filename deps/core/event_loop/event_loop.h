@@ -55,6 +55,8 @@ namespace core {
         void stop_timer_event(TimerEvent *timer_event);
 
         void delete_timer_event(TimerEvent *timer_event);
+
+        unsigned long now();
     };
 
     class TimerEvent {

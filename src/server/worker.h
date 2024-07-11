@@ -6,6 +6,9 @@
 #pragma once
 
 #include <core.h>
+#include "tcp_connection.h"
+#include "xhead.h"
+
 using namespace core;
 
 namespace penny {
@@ -18,9 +21,11 @@ namespace penny {
 
         EventLoop *_loop = nullptr;
         IOEvent *_pipe_event = nullptr;
+        IOEvent *_io_event = nullptr;
         std::thread *_thread = nullptr;
 
         LockFreeQueue<int> _lock_free_queue;
+        std::map<int, TcpConnection *> _connections;
 
     public:
         enum {
@@ -47,6 +52,7 @@ namespace penny {
         void _stop();
         // server business logic
         void _handle_new_connection(int client_fd);
+        int _request_message(std::string header, std::string body, TcpConnection *connection);
     private:
         // handle notify
         int _notify_send(int msg);

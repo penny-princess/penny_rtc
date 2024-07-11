@@ -71,11 +71,6 @@ namespace penny {
         LOG(INFO) << "_worker_id: ["<< _worker_id << "]" << "fd: ["<< client_fd << "]";
         sock_set_nodelay(client_fd);
         sock_setnonblock(client_fd);
-        TcpConnection* connection = new TcpConnection(_loop,client_fd,_connections);
-        sock_peer_to_str(client_fd, connection->ip, &connection->port);
-
-        connection->request_callback(std::bind(&Worker::_request_message, this,std::placeholders::_1, std::placeholders::_2, std::placeholders::_3));
-        _connections[client_fd] = connection;
     }
 
     void Worker::_stop() {
@@ -94,11 +89,6 @@ namespace penny {
             return -1;
         }
         return 0;
-    }
-
-    int Worker::_request_message(std::string header, std::string body, TcpConnection *connection) {
-        protocol_header_t* head = (protocol_header_t*)(header.data());
-        LOG(INFO) << "body_len: " << head->body_len;
     }
 
     void Worker::_notify_receive(EventLoop *, IOEvent *, int fd, int, void *) {

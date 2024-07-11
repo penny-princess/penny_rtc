@@ -16,7 +16,6 @@ add_executable(penny_rtc
         src/main.cpp
         src/server/server.cpp
         src/server/worker.cpp
-        src/server/tcp_connection.cpp
         src/server/xhead.h
 )
 

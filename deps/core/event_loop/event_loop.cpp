@@ -79,7 +79,10 @@ namespace core {
 
     void EventLoop::delete_io_event(IOEvent* io_event) {
         stop_io_event(io_event);
-        delete io_event;
+        if(io_event) {
+            delete io_event;
+            io_event = nullptr;
+        }
     }
 
     TimerEvent* EventLoop::create_timer_event(timer_callback callback, void* data,bool repeat) {

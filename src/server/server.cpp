@@ -10,6 +10,9 @@ namespace penny {
     Server::Server() : _loop(new EventLoop(this)) {}
 
     Server::~Server() {
+        _loop->delete_io_event(_pipe_event);
+        _loop->delete_io_event(_io_event);
+
         if (_loop) {
             delete _loop;
             _loop = nullptr;
@@ -70,8 +73,8 @@ namespace penny {
     void Server::_stop() {
         LOG(INFO) << "server stopping";
 
-        _loop->delete_io_event(_pipe_event);
-        _loop->delete_io_event(_io_event);
+        _loop->stop_io_event(_pipe_event);
+        _loop->stop_io_event(_io_event);
         _loop->stop();
 
         close(_listen_fd);

@@ -5,6 +5,5 @@
 
 #include <logger.h>
 #include <socket.h>
-#include <buffer.h>
 #include <unlocked_queues.h>
 #include <event_loop.h>

@@ -13,7 +13,6 @@ namespace penny {
 
     Worker::~Worker() {
         if(_loop) {
-            _loop->delete_io_event(_pipe_event);
             delete _loop;
             _loop = nullptr;
         }
@@ -170,6 +169,7 @@ namespace penny {
                 _loop->delete_io_event(c->io_event);
             }
         }
+        ::close(c->fd);
         _connections[c->fd] = nullptr;
         delete c;
     }
@@ -183,13 +183,13 @@ namespace penny {
 
     void Worker::_stop() {
         LOG(INFO) << "worker stopping, worker_id:" << _worker_id;
-        close(_notify_send_fd);
         if(_loop) {
             if(_pipe_event) {
                 _loop->delete_io_event(_pipe_event);
             }
             _loop->stop();
         }
+        ::close(_notify_send_fd);
         LOG(INFO) << "worker stopped, worker_id:" << _worker_id;
     }
 

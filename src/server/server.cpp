@@ -79,8 +79,7 @@ namespace penny {
             }
             _loop->stop();
         }
-
-        close(_notify_send_fd);
+        ::close(_notify_send_fd);
 
         for(const auto& item: _workers) {
             item->quit();

@@ -4,16 +4,18 @@
 //
 
 #include "event_loop.h"
-#include <sys/timerfd.h>
+
 #include <chrono>
 #include <stdexcept>
+#include <cstring>
+#include <iostream>
+#include <unistd.h>
+#include <sys/timerfd.h>
 
-namespace core {
-
-    EventLoop::EventLoop(void *owner):_events(1024) {
-        this->_owner = owner;
-        _epoll_fd = epoll_create1(0);
+namespace penny {
+    EventLoop::EventLoop(void *owner): _epoll_fd(epoll_create1(0)), _owner(owner), _epoll_events(1024) {
         if (_epoll_fd == -1) {
+            std::cerr << "Failed to create epoll file descriptor: " << strerror(errno) << std::endl;
             exit(-1);
         }
     }
@@ -26,19 +28,30 @@ namespace core {
         _running = true;
 
         while (_running) {
-            int num_events = epoll_wait(_epoll_fd, _events.data(), _events.size(), -1);
+            memset(&_epoll_events[0], 0x00,sizeof (struct epoll_event)*_epoll_events.size());
+            const int num_events = epoll_wait(
+                _epoll_fd,
+                (struct epoll_event*)&_epoll_events[0],
+                static_cast<int>(_epoll_events.size()),
+                -1
+            );
             if (num_events == -1) {
                 if (errno == EINTR) continue;
-                throw std::runtime_error("epoll_wait failed");
+                std::cerr << "epoll_wait failed: " << strerror(errno) << std::endl;
             }
-            for (int i = 0; i < num_events; ++i) {
-                IOEvent *io_event = static_cast<IOEvent*>(_events[i].data.ptr);
-                if (io_event && io_event->callback) {
-                    io_event->callback(this, io_event, io_event->fd, _events[i].events, io_event->data);
+            if (num_events == 0) {
+            }
+            if (num_events > 0) {
+                for (int i = 0; i < num_events; ++i) {
+                    auto &[events, data] = _epoll_events[i];
+                    if(data.fd) {
+                        process_io_event(data.fd);
+                        process_timer_event(data.fd);
+                    }
                 }
-            }
-            if(num_events >= static_cast<int>(_events.size()) ) {
-                _events.resize(_events.size() * 2);
+                if (num_events >= static_cast<int>(_epoll_events.size())) {
+                    _epoll_events.resize(_epoll_events.size() * 2);
+                }
             }
         }
     }
@@ -47,93 +60,127 @@ namespace core {
         _running = false;
     }
 
-    void *EventLoop::owner() {
+    void *EventLoop::owner() const {
         return _owner;
     }
 
-    IOEvent* EventLoop::create_io_event(io_callback callback, void* data) {
+    IOEvent *EventLoop::create_io_event(io_callback callback, void *data) {
         return new IOEvent(this, callback, data);
     }
 
-    int EventLoop::start_io_event(IOEvent *io_event, int fd, int mask) {
-        epoll_event event;
-        event.events = mask;
-        event.data.ptr = io_event;
+    void EventLoop::start_io_event(IOEvent *io_event, const int fd, const int mask) {
+        auto iter = _events.find(fd);
+        if (iter != _events.end()) {
+            if (iter->second->events == mask) {
+                return;
+            }
+            if (iter->second->events != mask) {
+                io_event->events = mask;
+
+                struct epoll_event event{};
+                memset(&event, 0x00, sizeof(struct epoll_event));
+                event.events = io_event->events;
+                event.data.fd = io_event->fd;
+
+                _events[io_event->fd] = io_event;
+                if (epoll_ctl(_epoll_fd, EPOLL_CTL_MOD, fd, &event) == -1) {
+                    std::cerr << "Failed to mod fd to epoll: " << strerror(errno) << std::endl;
+                    return;
+                }
+                return;
+            }
+        }
         io_event->fd = fd;
-        int ret = epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, fd, &event);
-        if(-1 == ret) {
-            return -1;
+        io_event->events = mask;
+
+        struct epoll_event event{};
+        memset(&event, 0x00, sizeof(struct epoll_event));
+        event.data.fd = fd;
+        event.events = mask;
+
+        if (epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, fd, &event) == -1) {
+            std::cerr << "Failed to add fd to epoll: " << strerror(errno) << std::endl;
+            ::close(fd);
+            return;
         }
-        return 0;
+
+        _events[io_event->fd] = io_event;
     }
 
-    int EventLoop::stop_io_event(IOEvent* io_event) {
-        epoll_event ev;
-        ev.data.ptr = io_event;
-        int ret = epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, io_event->fd, &ev);
-        if ( ret == -1) {
-            return -1;
+    void EventLoop::stop_io_event(const IOEvent *io_event) {
+        if (const auto iter= _events.find(io_event->fd); iter == _events.end()) {
+            return;
         }
-        return 0;
+        struct epoll_event ev;
+        memset(&ev, 0x00, sizeof(struct epoll_event));
+        ev.data.fd = io_event->fd;
+
+        if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, io_event->fd, &ev) == -1) {
+            std::cerr << "Failed to stop fd to epoll: " << strerror(errno) << std::endl;
+            return;
+        }
+        _events.erase(io_event->fd);
     }
 
-    void EventLoop::delete_io_event(IOEvent* io_event) {
+    void EventLoop::delete_io_event(const IOEvent *io_event) {
         stop_io_event(io_event);
-        if(io_event) {
-            delete io_event;
-            io_event = nullptr;
-        }
+        ::close(io_event->fd);
+        delete io_event;
     }
 
-    TimerEvent* EventLoop::create_timer_event(timer_callback callback, void* data,bool repeat) {
-        return new TimerEvent(this, callback, data, repeat);
+    TimerEvent *EventLoop::create_timer_event(const timer_callback &cb, void *data, bool repeat) {
+        return new TimerEvent(this, cb, data, repeat);
     }
 
-    void EventLoop::start_timer_event(TimerEvent *timer_event, unsigned int usec) {
-        int timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-        if (timer_fd == -1) {
-            throw std::runtime_error("Failed to create timer file descriptor");
+    void EventLoop::start_timer_event(TimerEvent *timer_event, const unsigned int usec) {
+        timer_event->fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+        if (timer_event->fd == -1) {
+            std::cerr << "Failed to create timerfd: " << strerror(errno) << std::endl;
+            return;
         }
 
-        struct itimerspec ts;
-        ts.it_value.tv_sec = usec / 1000000;
-        ts.it_value.tv_nsec = (usec % 1000000) * 1000;
-        ts.it_interval.tv_sec = timer_event->repeat ? ts.it_value.tv_sec : 0;
-        ts.it_interval.tv_nsec = timer_event->repeat ? ts.it_value.tv_nsec : 0;
+        itimerspec new_value{};
+        new_value.it_value.tv_sec = usec / 1000000;
+        new_value.it_value.tv_nsec = (usec % 1000000) * 1000;
+        new_value.it_interval.tv_sec = timer_event->repeat ? new_value.it_value.tv_sec : 0;
+        new_value.it_interval.tv_nsec = timer_event->repeat ? new_value.it_value.tv_nsec : 0;
 
-        if (timerfd_settime(timer_fd, 0, &ts, nullptr) == -1) {
-            close(timer_fd);
-            throw std::runtime_error("Failed to set timer");
+
+        if (timerfd_settime(timer_event->fd, 0, &new_value, nullptr) == -1) {
+            std::cerr << "Failed to set timerfd: " << strerror(errno) << std::endl;
+            ::close(timer_event->fd);
+            return;
         }
 
-        epoll_event ev;
-        ev.events = EPOLLIN;
-        ev.data.ptr = timer_event;
-        if (epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, timer_fd, &ev) == -1) {
-            close(timer_fd);
-            throw std::runtime_error("Failed to add timer file descriptor to epoll");
+        epoll_event event{};
+        event.data.fd = timer_event->fd;
+        event.events = EPOLLIN;
+
+        if (epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, timer_event->fd, &event) == -1) {
+            std::cerr << "Failed to add timerfd to epoll: " << strerror(errno) << std::endl;
+            ::close(timer_event->fd);
+            return;
         }
 
-        timer_event->fd = timer_fd;
+        _timers[timer_event->fd] = timer_event;
     }
 
-    void EventLoop::stop_timer_event(TimerEvent *timer_event) {
-        epoll_event ev;
-        ev.events = EPOLLIN;
-        ev.data.ptr = timer_event;
+    void EventLoop::stop_timer_event(const TimerEvent *timer_event) {
+        if (const auto iter = _timers.find(timer_event->fd); iter == _timers.end()) {
+            return;
+        }
+        struct epoll_event ev;
+        ev.data.fd = timer_event->fd;
         if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, timer_event->fd, &ev) == -1) {
-            throw std::runtime_error("Failed to remove timer file descriptor from epoll");
+            std::cerr << "Failed to remove timerfd from epoll: " << strerror(errno) << std::endl;
+            return;
         }
-        close(timer_event->fd);
-        timer_event->fd = -1;
+        _timers.erase(timer_event->fd);
     }
 
-    void EventLoop::delete_timer_event(TimerEvent *timer_event) {
-        epoll_event ev;
-        ev.events = EPOLLIN;
-        if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, timer_event->fd, &ev) == -1) {
-            throw std::runtime_error("Failed to remove timer file descriptor from epoll");
-        }
+    void EventLoop::delete_timer_event(const TimerEvent *timer_event) {
+        stop_timer_event(timer_event);
+        ::close(timer_event->fd);
         delete timer_event;
     }
 
@@ -142,5 +189,27 @@ namespace core {
         auto now = steady_clock::now().time_since_epoch();
         double now_double = duration_cast<duration<double>>(now).count();
         return static_cast<unsigned long>(now_double * 1000000);
+    }
+
+    void EventLoop::process_io_event(const int fd) {
+        auto iter = _events.find(fd);
+        if (iter != _events.end()) {
+            auto* io_event = iter->second;
+            if(io_event && io_event->callback) {
+                io_event->callback(io_event->loop, io_event, io_event->fd, io_event->events, io_event->data);
+            }
+        }
+    }
+
+    void EventLoop::process_timer_event(const int fd) {
+        if (_timers.find(fd) != _timers.end()) {
+            const auto timer_event = _timers[fd];
+            if(timer_event && timer_event) {
+                timer_event->callback(timer_event->loop, timer_event, timer_event->data);
+            }
+            if (!timer_event->repeat) {
+                delete_timer_event(timer_event);
+            }
+        }
     }
 }

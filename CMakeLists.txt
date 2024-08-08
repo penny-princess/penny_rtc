@@ -17,6 +17,8 @@ add_executable(penny_rtc
         src/server/server.cpp
         src/server/worker.cpp
         src/server/protocol.h
+        src/server/tcp_connection.h
+        src/server/handle.cpp
 )
 
 target_link_libraries(penny_rtc -lpthread core)

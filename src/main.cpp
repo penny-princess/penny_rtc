@@ -10,7 +10,6 @@ static void process_signal(int sig) {
         if (server) {
             server->quit();
         }
-
     }
 }
 
@@ -32,6 +31,7 @@ int init_server() {
 int main() {
     logger = Logger::instance();
     logger->init();
+    logger->set_level(INFO);
 
     signal(SIGINT, process_signal);
     signal(SIGTERM, process_signal);

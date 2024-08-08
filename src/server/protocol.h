@@ -5,18 +5,17 @@
 #include <pch.h>
 
 namespace penny {
-
-    const int XHEAD_SIZE = 36;
-    const int XHEAD_MAGIC_NUM = 0xfb202202;
+    const int HEADER_SIZE = 40;
+    const int PROTOCOL_CHECK_NUM = 0x0990908;
 
     struct protocol_header_t {
-        int id;
-        int version;
-        int log_id;
-        int magic_num;
-        int reserved;
-        int body_len;
-        char provider[16];
+        int32_t id;                     //4
+        int32_t version;                //4
+        int32_t log_id;                 //4
+        int32_t protocol_check_num;     //4
+        int32_t reserved;               //4
+        int32_t body_len;               //4
+        char provider[16];              //16
     };
 
 }

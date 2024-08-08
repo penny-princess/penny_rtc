@@ -4,25 +4,23 @@
 //
 
 #include "worker.h"
+#include "handle.h"
 
 namespace penny {
 
-    Worker::Worker(int worker_id) {
-        _worker_id = worker_id;
-        _loop = new EventLoop(this);
+    Worker::Worker(int worker_id): _worker_id(worker_id), _loop(new EventLoop(this)) {
     }
 
     Worker::~Worker() {
-        _loop->delete_io_event(_pipe_event);
+        if(_loop) {
+            _loop->delete_io_event(_pipe_event);
+            delete _loop;
+            _loop = nullptr;
+        }
 
         if(_thread) {
             delete _thread;
             _thread = nullptr;
-        }
-
-        if(_loop) {
-            delete _loop;
-            _loop = nullptr;
         }
     }
 
@@ -70,18 +68,128 @@ namespace penny {
     }
 
     void Worker::_handle_new_connection(int client_fd) {
-        LOG(INFO) << "_worker_id: ["<< _worker_id << "]" << "fd: ["<< client_fd << "]";
+        LOG(DEBUG) << "_worker_id: ["<< _worker_id << "]" << "fd: ["<< client_fd << "]";
         sock_set_nodelay(client_fd);
         sock_setnonblock(client_fd);
+
+        Handle* handle = new Handle();
+        sock_peer_to_str(client_fd, handle->ip, &(handle->port));
+        handle->set_timeout(std::bind(&Worker::_close_connection,this, std::placeholders::_1));
+        handle->fd = client_fd;
+        handle->connect();
+        handle->io_event = _loop->create_io_event(std::bind(&Worker::_handle_request, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5), this);
+        _loop->start_io_event(handle->io_event, client_fd, EventLoop::READ);
+
+        handle->timer_event = _loop->create_timer_event(std::bind(&Worker::_handle_timeout, this , std::placeholders::_1,std::placeholders::_2,std::placeholders::_3), handle, true);
+        _loop->start_timer_event(handle->timer_event, 100000);
+
+        handle->last_interaction = _loop->now();
+
+        if ((size_t)client_fd >= _connections.size()) {
+            _connections.resize(client_fd * 2, nullptr);
+        }
+
+        _connections[handle->fd] = handle;
+    }
+
+    void Worker::_handle_request(EventLoop*, IOEvent*, int fd, int event, void*) {
+        if(event & EventLoop::READ) {
+            _read_request(fd);
+        }
+    }
+
+    void Worker::_read_request(int fd) {
+        LOG(DEBUG) << "signaling worker " << _worker_id << " receive read event, fd: " << fd;
+        if (fd < 0 || (size_t)fd >= _connections.size()) {
+            LOG(WARN) << "invalid fd: " << fd;
+            return;
+        }
+
+        TcpConnection* c = _connections[fd];
+        int nread = 0;
+        int read_len = c->bytes_expected;
+        int qb_len = c->_request_buffer.length();
+        c->_request_buffer.reserve(qb_len + read_len);
+        nread = sock_read_data(fd, c->_request_buffer.data() + qb_len, read_len);
+
+        c->last_interaction = _loop->now();
+
+        if (-1 == nread) {
+            _close_connection(c);
+            return;
+        } else if (nread > 0) {
+            c->_request_buffer.append(c->_request_buffer.data() + qb_len, nread);
+        }
+
+        int ret = _handle_request_buffer(c);
+        if (ret != 0) {
+            _close_connection(c);
+            return;
+        }
+    }
+
+    int Worker::_handle_request_buffer(TcpConnection *c) {
+        while (c->_request_buffer.length() >= c->bytes_processed + c->bytes_expected) {
+            protocol_header_t* head = (protocol_header_t*)(c->_request_buffer.data());
+            if (TcpConnection::STATE_HEAD == c->current_state) {
+                if (PROTOCOL_CHECK_NUM != head->protocol_check_num) {
+                    LOG(WARN) << "invalid data, fd: " << c->fd;
+                    return -1;
+                }
+
+                c->current_state = TcpConnection::STATE_BODY;
+                c->bytes_processed = HEADER_SIZE;
+                c->bytes_expected = head->body_len;
+            } else {
+                std::string header(c->_request_buffer.data(), HEADER_SIZE);
+                std::string body(c->_request_buffer.data() + HEADER_SIZE, head->body_len);
+                int ret = c->handle0(header, body);
+                if (ret != 0) {
+                    return -1;
+                }
+
+                // 短连接处理
+                c->bytes_processed = 65535;
+            }
+        }
+
+        return 0;
+    }
+
+    void Worker::_write_response() {
+
+    }
+
+    void Worker::_close_connection(TcpConnection* c) {
+        LOG(INFO) << "close connection, fd: " << c->fd;
+        if(_loop) {
+            if(c->timer_event) {
+                _loop->delete_timer_event(c->timer_event);
+            }
+            if(c->io_event) {
+                _loop->delete_io_event(c->io_event);
+            }
+        }
+        _connections[c->fd] = nullptr;
+        delete c;
+    }
+
+    void Worker::_handle_timeout(EventLoop *loop, TimerEvent *, void *data) {
+        Handle* handle = (Handle*)(data);
+        if (loop->now() - handle->last_interaction >= 5 * 1000000) {
+            handle->timeout(handle);
+        }
     }
 
     void Worker::_stop() {
         LOG(INFO) << "worker stopping, worker_id:" << _worker_id;
-        close(_notify_receive_fd);
         close(_notify_send_fd);
-
-        _loop->stop_io_event(_pipe_event);
-        _loop->stop();
+        if(_loop) {
+            if(_pipe_event) {
+                _loop->delete_io_event(_pipe_event);
+            }
+            _loop->stop();
+        }
         LOG(INFO) << "worker stopped, worker_id:" << _worker_id;
     }
 
@@ -96,7 +204,6 @@ namespace penny {
     void Worker::_notify_receive(EventLoop *, IOEvent *, int fd, int, void *) {
         int msg;
         int ret = read(fd, &msg, sizeof(int));
-        LOG(INFO) << "test";
         if (ret != sizeof(int)) {
             LOG(WARN) << "read from pipe error: " << strerror(errno) << ", errno: " << errno;
             return;

@@ -7,6 +7,7 @@
 
 #include <core.h>
 #include "protocol.h"
+#include "handle.h"
 
 using namespace core;
 
@@ -24,6 +25,7 @@ namespace penny {
         std::thread *_thread = nullptr;
 
         LockFreeQueue<int> _lock_free_queue;
+        std::vector<Handle*> _connections;
 
     public:
         enum {
@@ -45,6 +47,20 @@ namespace penny {
 
         int new_connection(int fd);
 
+    private:
+        //handle delete connection
+        void _close_connection(TcpConnection* c);
+
+        // handle tcp content
+        void _handle_request(EventLoop *, IOEvent *, int, int, void *);
+        // handle tcp request
+        void _read_request(int fd);
+        int _handle_request_buffer(TcpConnection* c);
+        // handle tcp response
+        void _write_response();
+
+        // handle tcp timeout
+        void _handle_timeout(EventLoop *loop, TimerEvent *w, void *data);
     private:
         // stop logic
         void _stop();

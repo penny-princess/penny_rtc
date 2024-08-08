@@ -4,32 +4,32 @@
 //
 
 #pragma once
+#include <atomic>
+#include <functional>
+#include <utility>
+#include <sys/epoll.h>
 
-#include "pch.h"
-
-namespace core {
+namespace penny {
     class EventLoop;
 
     class IOEvent;
 
     class TimerEvent;
 
-    using io_callback = std::function<void(EventLoop *loop, IOEvent *event, int fd, int events, void *data)>;
-    using timer_callback = std::function<void(EventLoop *loop, TimerEvent *w, void *data)>;
+    using io_callback = std::function<void(EventLoop *loop,IOEvent *event, int fd, int events,void *data)>;
+    using timer_callback = std::function<void( EventLoop *loop, TimerEvent *w,void *data)>;
 
     class EventLoop {
-    private:
-        int _epoll_fd = -1;
-        void *_owner = nullptr;
-        bool _running = false;
-        std::vector<epoll_event> _events;
-
     public:
-        enum : int {
-            READ = EPOLLIN,
-            WRITE = EPOLLOUT
+        static const unsigned int READ = EPOLLIN;
+        static const unsigned int WRITE = EPOLLOUT;
+        enum: int {
+            Second,
+            Minute,
+            Hour,
+            Day
         };
-        EventLoop(void * owner);
+        explicit EventLoop(void * owner);
 
         ~EventLoop();
 
@@ -37,39 +37,40 @@ namespace core {
 
         void stop();
 
-        void *owner();
+        void *owner() const;
+
+    private:
+        int _epoll_fd = -1;
+        void *_owner = nullptr;
+        bool _running = false;
+        std::vector<epoll_event> _epoll_events;
+        std::unordered_map<int, IOEvent*> _events;
+        std::unordered_map<int, TimerEvent*> _timers;
+
     public:
-        IOEvent *create_io_event(io_callback, void *data);
+        IOEvent *create_io_event(io_callback callback, void *data);
 
-        int start_io_event(IOEvent *io_event, int fd, int mask);
+        void start_io_event(IOEvent *io_event, int fd, int mask);
 
-        int stop_io_event(IOEvent *io_event);
+        void stop_io_event(const IOEvent *io_event);
 
-        void delete_io_event(IOEvent *io_event);
+        void delete_io_event(const IOEvent *io_event);
 
     public:
-        TimerEvent* create_timer_event(timer_callback, void *data, bool repeat);
+        TimerEvent* create_timer_event(const timer_callback &cb, void *data, bool repeat);
 
-        void start_timer_event(TimerEvent *timer_event, unsigned int usec);
+        void start_timer_event(TimerEvent *timer_event,unsigned int usec);
 
-        void stop_timer_event(TimerEvent *timer_event);
+        void stop_timer_event(const TimerEvent *timer_event);
 
-        void delete_timer_event(TimerEvent *timer_event);
+        void delete_timer_event(const TimerEvent *timer_event);
 
-        unsigned long now();
-    };
+        static unsigned long now();
 
-    class TimerEvent {
-        public:
-            EventLoop* loop;
-            timer_callback callback;
-            void* data;
-            bool repeat;
-            int interval;
-            int fd;
+    private:
+        void process_timer_event(int fd);
+        void process_io_event(int fd);
 
-        public:
-            TimerEvent(EventLoop* loop, timer_callback callback, void* data, bool repeat): loop(loop),callback(callback), data(data), repeat(repeat) {};
     };
 
     class IOEvent {
@@ -77,9 +78,22 @@ namespace core {
             EventLoop* loop = nullptr;
             io_callback callback;
             void* data = nullptr;
+            int events = -1;
             int fd = -1;
         public:
-            IOEvent(EventLoop* loop, io_callback callback, void* data): loop(loop),callback(callback), data(data) {}
+            IOEvent(EventLoop* loop, io_callback callback, void* data):loop(loop),callback(callback),data(data){}
+    };
+
+    class TimerEvent {
+    public:
+        EventLoop* loop = nullptr;
+        timer_callback callback;
+        void* data = nullptr;
+        bool repeat = false;
+        int fd = -1;
+
+        TimerEvent(EventLoop* loop, timer_callback callback, void* data,const bool repeat)
+            : loop(loop), callback(std::move(callback)), data(data), repeat(repeat) {}
     };
 
 }

@@ -10,8 +10,7 @@ add_library(core
     event_loop/event_loop.cpp
     net/socket.cpp
     common/unlocked_queues.h
-    common/buffer.cpp
-    logger/logger.cpp
+        logger/logger.cpp
 )
 
 target_precompile_headers(core PUBLIC pch/pch.h)

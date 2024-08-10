@@ -70,8 +70,8 @@ namespace penny {
         return _owner;
     }
 
-    IOEvent *EventLoop::create_io_event(io_callback callback, void *data) {
-        return new IOEvent(this, std::move(callback), data);
+    IOEvent *EventLoop::create_io_event(const io_callback& callback, void *data) {
+        return new IOEvent(this, callback, data);
     }
 
     void EventLoop::start_io_event(IOEvent *io_event, const int fd, const int mask) {

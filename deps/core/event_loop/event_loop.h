@@ -46,7 +46,7 @@ namespace penny {
         std::priority_queue<TimerEvent*, std::vector<TimerEvent*>,  std::greater<>> _timer_queue;
 
     public:
-        IOEvent *create_io_event(io_callback callback, void *data);
+        IOEvent *create_io_event(const io_callback& callback, void *data);
 
         void start_io_event(IOEvent *io_event, int fd, int mask);
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-cd bin && cmake ../
+cd build && cmake ../
 
 if test $# -gt 0 && test $1 = "clean"
 then

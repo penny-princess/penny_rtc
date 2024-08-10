@@ -5,10 +5,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_BUILD_TYPE Release)
 
 # cache compiler
-set(CMAKE_C_COMPILER_LAUNCHER ccache)
-set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
+#set(CMAKE_C_COMPILER_LAUNCHER ccache)
+#set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 
-add_definitions("-g -pipe -W -Wall -O0")
+add_definitions("-g -pipe -W -Wall")
 
 add_subdirectory(deps/core)
 
@@ -17,8 +17,8 @@ add_executable(penny_rtc
         src/server/server.cpp
         src/server/worker.cpp
         src/server/protocol.h
-        src/server/tcp_connection.h
         src/server/handle.cpp
+        src/server/tcp_connection.cpp
 )
 
 target_link_libraries(penny_rtc -lpthread core)

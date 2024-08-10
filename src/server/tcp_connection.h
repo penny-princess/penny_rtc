@@ -32,7 +32,7 @@ namespace penny {
 
     public:
         virtual void timeout(TcpConnection* c) { clear_connect(c); }
-        virtual void set_timeout(timeout_callback callback) { clear_connect = callback; }
+        virtual void set_timeout(timeout_callback callback) { clear_connect = std::move(callback); }
 
     public:
         int fd;

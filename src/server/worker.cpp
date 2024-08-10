@@ -79,10 +79,10 @@ namespace penny {
         handle->io_event = _loop->create_io_event(std::bind_front(&Worker::_handle_request, this), this);
         _loop->start_io_event(handle->io_event, client_fd, EventLoop::READ);
 
-        handle->timer_event = _loop->create_timer_event(std::bind_front(&Worker::_handle_timeout, this ), handle, false);
-        _loop->start_timer_event(handle->timer_event, 10000);
+        handle->timer_event = _loop->create_timer_event(std::bind_front(&Worker::_handle_timeout, this ), handle, true);
+        _loop->start_timer_event(handle->timer_event, 1000);
 
-        handle->last_interaction = _loop->now();
+        handle->last_interaction = EventLoop::now();
 
         if ((size_t)client_fd >= _connections.size()) {
             _connections.resize(client_fd * 2, nullptr);
@@ -106,12 +106,12 @@ namespace penny {
 
         TcpConnection* c = _connections[fd];
         int nread = 0;
-        int read_len = c->bytes_expected;
-        int qb_len = c->_request_buffer.length();
+        const int read_len = static_cast<int>(c->bytes_expected);
+        const int qb_len = static_cast<int>(c->_request_buffer.length());
         c->_request_buffer.reserve(qb_len + read_len);
         nread = sock_read_data(fd, c->_request_buffer.data() + qb_len, read_len);
 
-        c->last_interaction = _loop->now();
+        c->last_interaction = EventLoop::now();
 
         if (-1 == nread) {
             _close_connection(c);
@@ -129,7 +129,7 @@ namespace penny {
 
     int Worker::_handle_request_buffer(TcpConnection *c) {
         while (c->_request_buffer.length() >= c->bytes_processed + c->bytes_expected) {
-            protocol_header_t* head = (protocol_header_t*)(c->_request_buffer.data());
+            const auto* head = reinterpret_cast<protocol_header_t*>(c->_request_buffer.data());
             if (TcpConnection::STATE_HEAD == c->current_state) {
                 if (PROTOCOL_CHECK_NUM != head->protocol_check_num) {
                     LOG(WARN) << "invalid data, fd: " << c->fd;
@@ -175,14 +175,14 @@ namespace penny {
         }
     }
 
-    void Worker::_handle_timeout(EventLoop *loop, TimerEvent *, void *data) {
-        Handle* handle = (Handle*)(data);
-        // if (loop->now() - handle->last_interaction >= 5 * 1000) {
+    void Worker::_handle_timeout(EventLoop *, TimerEvent *, void *data) {
+        auto* handle = (Handle*)(data);
+        if (EventLoop::now() - handle->last_interaction >= 5 * 1000) {
             handle->timeout(handle);
-        // }
+        }
     }
 
-    void Worker::_stop() {
+    void Worker::_stop() const {
         LOG(INFO) << "worker stopping, worker_id:" << _worker_id;
         if(_loop) {
             if(_pipe_event) {
@@ -194,18 +194,16 @@ namespace penny {
         LOG(INFO) << "worker stopped, worker_id:" << _worker_id;
     }
 
-    int Worker::_notify_send(int msg) {
-        int ret = write(_notify_send_fd, &msg, sizeof(int));
-        if(ret != sizeof(int)) {
+    int Worker::_notify_send(const int msg) const {
+        if(write(_notify_send_fd, &msg, sizeof(int)) != sizeof(int)) {
             return -1;
         }
         return 0;
     }
 
-    void Worker::_notify_receive(EventLoop *, IOEvent *, int fd, int, void *) {
+    void Worker::_notify_receive(EventLoop *, IOEvent *, const int fd, int, void *) {
         int msg;
-        int ret = read(fd, &msg, sizeof(int));
-        if (ret != sizeof(int)) {
+        if (const int ret = read(fd, &msg, sizeof(int)); ret != sizeof(int)) {
             LOG(WARN) << "read from pipe error: " << strerror(errno) << ", errno: " << errno;
             return;
         }

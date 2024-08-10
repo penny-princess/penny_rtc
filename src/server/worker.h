@@ -55,7 +55,7 @@ namespace penny {
         void _handle_request(EventLoop *, IOEvent *, int, int, void *);
         // handle tcp request
         void _read_request(int fd);
-        int _handle_request_buffer(TcpConnection* c);
+        static int _handle_request_buffer(TcpConnection* c);
         // handle tcp response
         void _write_response();
 
@@ -63,12 +63,12 @@ namespace penny {
         void _handle_timeout(EventLoop *loop, TimerEvent *w, void *data);
     private:
         // stop logic
-        void _stop();
+        void _stop() const;
         // server business logic
         void _handle_new_connection(int client_fd);
     private:
         // handle notify
-        int _notify_send(int msg);
+        [[nodiscard]] int _notify_send(int msg) const;
         void _notify_receive(EventLoop *, IOEvent *, int fd, int, void *);
 
     };

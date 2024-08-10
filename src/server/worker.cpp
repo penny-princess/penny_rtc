@@ -32,7 +32,7 @@ namespace penny {
         }
         _notify_receive_fd = fds[0];
         _notify_send_fd = fds[1];
-        _pipe_event = _loop->create_io_event(std::bind(&Worker::_notify_receive, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5), this);
+        _pipe_event = _loop->create_io_event(std::bind_front(&Worker::_notify_receive, this), this);
         _loop->start_io_event(_pipe_event, _notify_receive_fd, EventLoop::READ);
         LOG(INFO) << "worker init end, worker_id:" << _worker_id;
         return 0;
@@ -43,7 +43,7 @@ namespace penny {
             LOG(WARN) << "thread already start, worker_id:" << _worker_id;
             return -1;
         }
-        _thread = new std::thread([=]() {
+        _thread = new std::thread([this]() {
             LOG(INFO) << "worker start";
             _loop->start();
             LOG(INFO) << "worker end, worker_id:" << _worker_id;
@@ -73,14 +73,14 @@ namespace penny {
 
         Handle* handle = new Handle();
         sock_peer_to_str(client_fd, handle->ip, &(handle->port));
-        handle->set_timeout(std::bind(&Worker::_close_connection,this, std::placeholders::_1));
+        handle->set_timeout(std::bind_front(&Worker::_close_connection,this));
         handle->fd = client_fd;
         handle->connect();
-        handle->io_event = _loop->create_io_event(std::bind(&Worker::_handle_request, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5), this);
+        handle->io_event = _loop->create_io_event(std::bind_front(&Worker::_handle_request, this), this);
         _loop->start_io_event(handle->io_event, client_fd, EventLoop::READ);
 
-        handle->timer_event = _loop->create_timer_event(std::bind(&Worker::_handle_timeout, this , std::placeholders::_1,std::placeholders::_2,std::placeholders::_3), handle, true);
-        _loop->start_timer_event(handle->timer_event, 100000);
+        handle->timer_event = _loop->create_timer_event(std::bind_front(&Worker::_handle_timeout, this ), handle, false);
+        _loop->start_timer_event(handle->timer_event, 10000);
 
         handle->last_interaction = _loop->now();
 
@@ -161,24 +161,25 @@ namespace penny {
 
     void Worker::_close_connection(TcpConnection* c) {
         LOG(INFO) << "close connection, fd: " << c->fd;
-        if(_loop) {
-            if(c->timer_event) {
-                _loop->delete_timer_event(c->timer_event);
+        if(c) {
+            if(_loop) {
+                if(c->timer_event) {
+                    _loop->delete_timer_event(c->timer_event);
+                }
+                if(c->io_event) {
+                    _loop->delete_io_event(c->io_event);
+                }
             }
-            if(c->io_event) {
-                _loop->delete_io_event(c->io_event);
-            }
+            _connections[c->fd] = nullptr;
+            delete c;
         }
-        ::close(c->fd);
-        _connections[c->fd] = nullptr;
-        delete c;
     }
 
     void Worker::_handle_timeout(EventLoop *loop, TimerEvent *, void *data) {
         Handle* handle = (Handle*)(data);
-        if (loop->now() - handle->last_interaction >= 5 * 1000000) {
+        // if (loop->now() - handle->last_interaction >= 5 * 1000) {
             handle->timeout(handle);
-        }
+        // }
     }
 
     void Worker::_stop() {

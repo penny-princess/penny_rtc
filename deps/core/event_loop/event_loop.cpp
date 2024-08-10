@@ -28,12 +28,19 @@ namespace penny {
         _running = true;
 
         while (_running) {
-            memset(&_epoll_events[0], 0x00,sizeof (struct epoll_event)*_epoll_events.size());
+            process_timer_event();
+            int timeout = -1;
+            if (!_timer_queue.empty()) {
+                auto now = std::chrono::steady_clock::now();
+                auto next_timer = _timer_queue.top();
+                auto time_until_next = std::chrono::duration_cast<std::chrono::milliseconds>(next_timer->get_expiry_time() - now).count();
+                timeout = std::max(0, static_cast<int>(time_until_next));
+            }
             const int num_events = epoll_wait(
                 _epoll_fd,
                 (struct epoll_event*)&_epoll_events[0],
                 static_cast<int>(_epoll_events.size()),
-                -1
+                timeout
             );
             if (num_events == -1) {
                 if (errno == EINTR) continue;
@@ -46,7 +53,6 @@ namespace penny {
                     auto &[events, data] = _epoll_events[i];
                     if(data.fd) {
                         process_io_event(data.fd);
-                        process_timer_event(data.fd);
                     }
                 }
                 if (num_events >= static_cast<int>(_epoll_events.size())) {
@@ -77,8 +83,7 @@ namespace penny {
             if (iter->second->events != mask) {
                 io_event->events = mask;
 
-                struct epoll_event event{};
-                memset(&event, 0x00, sizeof(struct epoll_event));
+                epoll_event event{};
                 event.events = io_event->events;
                 event.data.fd = io_event->fd;
 
@@ -94,7 +99,6 @@ namespace penny {
         io_event->events = mask;
 
         struct epoll_event event{};
-        memset(&event, 0x00, sizeof(struct epoll_event));
         event.data.fd = fd;
         event.events = mask;
 
@@ -111,8 +115,7 @@ namespace penny {
         if (const auto iter= _events.find(io_event->fd); iter == _events.end()) {
             return;
         }
-        struct epoll_event ev;
-        memset(&ev, 0x00, sizeof(struct epoll_event));
+        epoll_event ev{};
         ev.data.fd = io_event->fd;
 
         if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, io_event->fd, &ev) == -1) {
@@ -133,62 +136,27 @@ namespace penny {
     }
 
     void EventLoop::start_timer_event(TimerEvent *timer_event, const unsigned int usec) {
-        timer_event->fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-        if (timer_event->fd == -1) {
-            std::cerr << "Failed to create timerfd: " << strerror(errno) << std::endl;
-            return;
-        }
-
-        itimerspec new_value{};
-        new_value.it_value.tv_sec = usec / 1000000;
-        new_value.it_value.tv_nsec = (usec % 1000000) * 1000;
-        new_value.it_interval.tv_sec = timer_event->repeat ? new_value.it_value.tv_sec : 0;
-        new_value.it_interval.tv_nsec = timer_event->repeat ? new_value.it_value.tv_nsec : 0;
-
-
-        if (timerfd_settime(timer_event->fd, 0, &new_value, nullptr) == -1) {
-            std::cerr << "Failed to set timerfd: " << strerror(errno) << std::endl;
-            ::close(timer_event->fd);
-            return;
-        }
-
-        epoll_event event{};
-        event.data.fd = timer_event->fd;
-        event.events = EPOLLIN;
-
-        if (epoll_ctl(_epoll_fd, EPOLL_CTL_ADD, timer_event->fd, &event) == -1) {
-            std::cerr << "Failed to add timerfd to epoll: " << strerror(errno) << std::endl;
-            ::close(timer_event->fd);
-            return;
-        }
-
-        _timers[timer_event->fd] = timer_event;
+        timer_event->active = true;
+        timer_event->usec = usec;
+        timer_event->start_time = std::chrono::steady_clock::now();
+        _timer_queue.push(timer_event);
     }
 
-    void EventLoop::stop_timer_event(const TimerEvent *timer_event) {
-        if (const auto iter = _timers.find(timer_event->fd); iter == _timers.end()) {
-            return;
-        }
-        struct epoll_event ev;
-        ev.data.fd = timer_event->fd;
-        if (epoll_ctl(_epoll_fd, EPOLL_CTL_DEL, timer_event->fd, &ev) == -1) {
-            std::cerr << "Failed to remove timerfd from epoll: " << strerror(errno) << std::endl;
-            return;
-        }
-        _timers.erase(timer_event->fd);
+    void EventLoop::stop_timer_event(TimerEvent *timer_event) {
+        timer_event->active = false;
+        timer_event->repeat = false;
     }
 
-    void EventLoop::delete_timer_event(const TimerEvent *timer_event) {
+    void EventLoop::delete_timer_event(TimerEvent *timer_event) {
         stop_timer_event(timer_event);
-        ::close(timer_event->fd);
         delete timer_event;
     }
 
     unsigned long EventLoop::now() {
         using namespace std::chrono;
-        auto now = steady_clock::now().time_since_epoch();
-        double now_double = duration_cast<duration<double>>(now).count();
-        return static_cast<unsigned long>(now_double * 1000000);
+        const auto now = std::chrono::system_clock::now();
+        const auto milliseconds_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+        return milliseconds_since_epoch;
     }
 
     void EventLoop::process_io_event(const int fd) {
@@ -201,14 +169,23 @@ namespace penny {
         }
     }
 
-    void EventLoop::process_timer_event(const int fd) {
-        if (_timers.find(fd) != _timers.end()) {
-            const auto timer_event = _timers[fd];
-            if(timer_event && timer_event) {
-                timer_event->callback(timer_event->loop, timer_event, timer_event->data);
-            }
-            if (!timer_event->repeat) {
-                delete_timer_event(timer_event);
+    void EventLoop::process_timer_event() {
+        auto now = std::chrono::steady_clock::now();
+        while (!_timer_queue.empty()) {
+            TimerEvent* timer = _timer_queue.top();
+            if (timer->get_expiry_time() <= now) {
+                _timer_queue.pop();
+                if (timer->active) {
+                    timer->callback(timer->loop, timer, timer->data);
+                    if(timer->repeat) {
+                        timer->start_time = std::chrono::steady_clock::now();  // Reset the start time for the next interval
+                        _timer_queue.push(timer);
+                    } else {
+                        stop_timer_event(timer);
+                    }
+                }
+            } else {
+                break;
             }
         }
     }

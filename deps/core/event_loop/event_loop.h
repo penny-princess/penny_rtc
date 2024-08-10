@@ -5,7 +5,9 @@
 
 #pragma once
 #include <atomic>
+#include <chrono>
 #include <functional>
+#include <queue>
 #include <utility>
 #include <sys/epoll.h>
 
@@ -23,12 +25,7 @@ namespace penny {
     public:
         static const unsigned int READ = EPOLLIN;
         static const unsigned int WRITE = EPOLLOUT;
-        enum: int {
-            Second,
-            Minute,
-            Hour,
-            Day
-        };
+        
         explicit EventLoop(void * owner);
 
         ~EventLoop();
@@ -46,6 +43,7 @@ namespace penny {
         std::vector<epoll_event> _epoll_events;
         std::unordered_map<int, IOEvent*> _events;
         std::unordered_map<int, TimerEvent*> _timers;
+        std::priority_queue<TimerEvent*, std::vector<TimerEvent*>,  std::greater<>> _timer_queue;
 
     public:
         IOEvent *create_io_event(io_callback callback, void *data);
@@ -61,14 +59,14 @@ namespace penny {
 
         void start_timer_event(TimerEvent *timer_event,unsigned int usec);
 
-        void stop_timer_event(const TimerEvent *timer_event);
+        void stop_timer_event(TimerEvent *timer_event);
 
-        void delete_timer_event(const TimerEvent *timer_event);
+        void delete_timer_event(TimerEvent *timer_event);
 
         static unsigned long now();
 
     private:
-        void process_timer_event(int fd);
+        void process_timer_event();
         void process_io_event(int fd);
 
     };
@@ -81,7 +79,7 @@ namespace penny {
             int events = -1;
             int fd = -1;
         public:
-            IOEvent(EventLoop* loop, io_callback callback, void* data):loop(loop),callback(callback),data(data){}
+            IOEvent(EventLoop* loop, io_callback callback, void* data):loop(loop),callback(std::move(callback)),data(data){}
     };
 
     class TimerEvent {
@@ -90,10 +88,21 @@ namespace penny {
         timer_callback callback;
         void* data = nullptr;
         bool repeat = false;
-        int fd = -1;
+        unsigned int usec = 1000;
+        int active = false;
+        std::chrono::time_point<std::chrono::steady_clock> start_time;
 
         TimerEvent(EventLoop* loop, timer_callback callback, void* data,const bool repeat)
             : loop(loop), callback(std::move(callback)), data(data), repeat(repeat) {}
+
+        std::chrono::time_point<std::chrono::steady_clock> get_expiry_time() const {
+            return start_time + std::chrono::milliseconds(usec);
+        }
+
+        bool operator>(const TimerEvent& other) const {
+            return this->get_expiry_time() > other.get_expiry_time();
+        }
+
     };
 
 }

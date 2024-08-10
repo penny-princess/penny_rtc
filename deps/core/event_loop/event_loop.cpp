@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <sys/timerfd.h>
 
-namespace penny {
+namespace core {
     EventLoop::EventLoop(void *owner): _epoll_fd(epoll_create1(0)), _owner(owner), _epoll_events(1024) {
         if (_epoll_fd == -1) {
             std::cerr << "Failed to create epoll file descriptor: " << strerror(errno) << std::endl;

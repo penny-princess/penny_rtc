@@ -11,7 +11,7 @@
 #include <utility>
 #include <sys/epoll.h>
 
-namespace penny {
+namespace core {
     class EventLoop;
 
     class IOEvent;

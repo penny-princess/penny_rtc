@@ -25,12 +25,14 @@ namespace penny {
         virtual ~TcpConnection() = default;
         using timeout_callback = std::function<void(TcpConnection* c)>;
         using response_callback = std::function<void(TcpConnection* c)>;
+        using response_callback = std::function<void(TcpConnection* c)>;
 
     public:
         virtual void connect() = 0;
         virtual int handle0(const std::string& header, const std::string& body) = 0;
         virtual void error() = 0;
         virtual void timeout(TcpConnection* c) { if(timeout_cb) timeout_cb(c); }
+        void response(const std::string& buffer);        virtual void timeout(TcpConnection* c) { if(timeout_cb) timeout_cb(c); }
         void response(const std::string& buffer);
     public:
         virtual void set_timeout(const timeout_callback& callback) { timeout_cb = callback; }
@@ -44,6 +46,8 @@ namespace penny {
         int port;
         IOEvent* io_event = nullptr;
         TimerEvent* timer_event = nullptr;
+        timeout_callback timeout_cb;
+        response_callback response_cb;
         timeout_callback timeout_cb;
         response_callback response_cb;
 

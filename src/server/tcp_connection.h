@@ -24,23 +24,28 @@ namespace penny {
         TcpConnection() = default;
         virtual ~TcpConnection() = default;
         using timeout_callback = std::function<void(TcpConnection* c)>;
+        using response_callback = std::function<void(TcpConnection* c)>;
 
     public:
         virtual void connect() = 0;
         virtual int handle0(const std::string& header, const std::string& body) = 0;
         virtual void error() = 0;
-
+        virtual void timeout(TcpConnection* c) { if(timeout_cb) timeout_cb(c); }
+        void response(const std::string& buffer);
     public:
-        virtual void timeout(TcpConnection* c) { clear_connect(c); }
-        virtual void set_timeout(const timeout_callback& callback) { clear_connect = callback; }
-
+        virtual void set_timeout(const timeout_callback& callback) { if(timeout_cb) timeout_cb = callback; }
+        virtual void set_response(const response_callback& callback) { if(response_cb) response_cb = callback; }
+        bool is_fd_valid(int fd) {
+            return fcntl(fd, F_GETFD) != -1 || errno != EBADF;
+        }
     public:
         int fd;
         char ip[64];
         int port;
         IOEvent* io_event = nullptr;
         TimerEvent* timer_event = nullptr;
-        timeout_callback clear_connect;
+        timeout_callback timeout_cb;
+        response_callback response_cb;
 
         size_t bytes_expected = HEADER_SIZE;
         size_t bytes_processed = 0;

@@ -153,7 +153,6 @@ namespace core {
     }
 
     unsigned long EventLoop::now() {
-        using namespace std::chrono;
         const auto now = std::chrono::system_clock::now();
         const auto milliseconds_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
         return milliseconds_since_epoch;

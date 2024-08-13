@@ -21,8 +21,8 @@ namespace penny {
     }
 
     int Handle::handle0(const std::string &header,const std::string &body) {
-        LOG(INFO) << "header is:" << header << ", body is:" << body;
-
+        LOG(INFO) << "worerk_fd is: " << fd << ", header is:" << header << ", body is:" << body ;
+        response("test fuck you");
         return 0;
     }
 

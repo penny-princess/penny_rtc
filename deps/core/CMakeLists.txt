@@ -7,9 +7,9 @@ set(CMAKE_BUILD_TYPE Release)
 add_definitions("-g -pipe -W -Wall")
 
 add_library(core
-    event_loop/event_loop.cpp
-    net/socket.cpp
-    common/unlocked_queues.h
+        common/event_loop.cpp
+        net/socket.cpp
+        common/unlocked_queues.h
         logger/logger.cpp
 )
 

@@ -57,10 +57,12 @@ namespace penny {
         void _read_request(int fd);
         static int _handle_request_buffer(TcpConnection* c);
         // handle tcp response
-        void _write_response();
+        void _write_response(int fd);
 
         // handle tcp timeout
         void _handle_timeout(EventLoop *loop, TimerEvent *w, void *data);
+        // handle tcp response
+        void _handle_response(TcpConnection* c);
     private:
         // stop logic
         void _stop() const;

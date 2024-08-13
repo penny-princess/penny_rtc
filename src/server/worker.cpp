@@ -74,13 +74,14 @@ namespace penny {
         Handle* handle = new Handle();
         sock_peer_to_str(client_fd, handle->ip, &(handle->port));
         handle->set_timeout(std::bind_front(&Worker::_close_connection,this));
+        handle->set_response(std::bind_front(&Worker::_handle_response,this));
         handle->fd = client_fd;
         handle->connect();
         handle->io_event = _loop->create_io_event(std::bind_front(&Worker::_handle_request, this), this);
         _loop->start_io_event(handle->io_event, client_fd, EventLoop::READ);
 
         handle->timer_event = _loop->create_timer_event(std::bind_front(&Worker::_handle_timeout, this ), handle, true);
-        _loop->start_timer_event(handle->timer_event, 1000);
+        _loop->start_timer_event(handle->timer_event, 1 * 1000);
 
         handle->last_interaction = EventLoop::now();
 
@@ -94,6 +95,10 @@ namespace penny {
     void Worker::_handle_request(EventLoop*, IOEvent*, int fd, int event, void*) {
         if(event & EventLoop::READ) {
             _read_request(fd);
+        }
+
+        if(event & EventLoop::WRITE) {
+            _write_response(fd);
         }
     }
 
@@ -123,6 +128,7 @@ namespace penny {
         int ret = _handle_request_buffer(c);
         if (ret != 0) {
             _close_connection(c);
+            LOG(ERROR) << "WLF";
             return;
         }
     }
@@ -155,7 +161,39 @@ namespace penny {
         return 0;
     }
 
-    void Worker::_write_response() {
+    void Worker::_write_response(int fd) {
+        if (fd <= 0 || (size_t)fd >= _connections.size()) {
+            return;
+        }
+
+        TcpConnection* c = _connections[fd];
+        if (!c) {
+            return;
+        }
+        while (!c->reply_list.empty()) {
+            std::string reply = c->reply_list.front();
+            LOG(INFO) << "shit try agin:" << c->is_fd_valid(fd) << ", and fd is:" << fd << "and c->fd is:" << c->is_fd_valid(c->fd);
+            int nwritten = sock_write_data(c->fd, reply.data() + c->cur_resp_pos, reply.size() - c->cur_resp_pos);
+            if (-1 == nwritten) {
+                _close_connection(c);
+                return;
+            } else if (0 == nwritten) {
+                LOG(WARN) << "write zero bytes, fd: " << c->fd << ", worker_id: " << _worker_id;
+            } else if ((nwritten + c->cur_resp_pos) >= reply.size()) {
+                // 写入完成
+                c->reply_list.pop_front();
+                c->cur_resp_pos = 0;
+                LOG(INFO) << "write finished, fd: " << c->fd << ", worker_id: " << _worker_id;
+            } else {
+                c->cur_resp_pos += nwritten;
+            }
+        }
+
+        c->last_interaction = EventLoop::now();
+        if (c->reply_list.empty()) {
+            _loop->stop_io_event(c->io_event);
+            LOG(INFO) << "stop write event, fd: " << c->fd << ", worker_id: " << _worker_id;
+        }
 
     }
 
@@ -179,6 +217,12 @@ namespace penny {
         auto* handle = (Handle*)(data);
         if (EventLoop::now() - handle->last_interaction >= 5 * 1000) {
             handle->timeout(handle);
+        }
+    }
+
+    void Worker::_handle_response(TcpConnection* c) {
+        if(c && c->io_event) {
+            _loop->start_io_event(c->io_event, c->fd, EventLoop::WRITE);
         }
     }
 

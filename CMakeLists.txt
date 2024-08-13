@@ -8,7 +8,7 @@ set(CMAKE_BUILD_TYPE Debug)
 #set(CMAKE_C_COMPILER_LAUNCHER ccache)
 #set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
 
-add_definitions("-g -pipe -W -Wall -O0")
+add_definitions("-g -pipe -W -Wall")
 
 add_subdirectory(deps/core)
 

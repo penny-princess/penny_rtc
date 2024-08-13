@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(penny_rtc)
 
 set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_BUILD_TYPE Debug)
+set(CMAKE_BUILD_TYPE Release)
 
 # cache compiler
 #set(CMAKE_C_COMPILER_LAUNCHER ccache)
@@ -17,6 +17,7 @@ add_executable(penny_rtc
         src/server/server.cpp
         src/server/protocol.h
         src/server/handle.cpp
+        src/server/worker.cpp
         src/server/tcp_connection.cpp
 )
 

@@ -33,8 +33,8 @@ namespace penny {
         virtual void timeout(TcpConnection* c) { if(timeout_cb) timeout_cb(c); }
         void response(const std::string& buffer);
     public:
-        virtual void set_timeout(const timeout_callback& callback) { if(timeout_cb) timeout_cb = callback; }
-        virtual void set_response(const response_callback& callback) { if(response_cb) response_cb = callback; }
+        virtual void set_timeout(const timeout_callback& callback) { timeout_cb = callback; }
+        virtual void set_response(const response_callback& callback) { response_cb = callback; }
         bool is_fd_valid(int fd) {
             return fcntl(fd, F_GETFD) != -1 || errno != EBADF;
         }

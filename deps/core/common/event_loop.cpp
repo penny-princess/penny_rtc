@@ -148,12 +148,12 @@ namespace core {
     }
 
     void EventLoop::delete_timer_event(TimerEvent *timer_event) {
+        timer_event->deleted = true;
         stop_timer_event(timer_event);
-        delete timer_event;
     }
 
     unsigned long EventLoop::now() {
-        const auto now = std::chrono::steady_clock::now();
+        const auto now = std::chrono::system_clock::now();
         const auto milliseconds_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
         return milliseconds_since_epoch;
     }
@@ -172,19 +172,27 @@ namespace core {
         auto now = std::chrono::steady_clock::now();
         while (!_timer_queue.empty()) {
             TimerEvent* timer = _timer_queue.top();
-            if (timer->get_expiry_time() <= now) {
-                _timer_queue.pop();
-                if (timer->active) {
-                    timer->callback(timer->loop, timer, timer->data);
-                    if(timer->repeat) {
-                        timer->start_time = std::chrono::steady_clock::now();  // Reset the start time for the next interval
-                        _timer_queue.push(timer);
+
+            if (timer && timer->active) {
+                if (timer->get_expiry_time() <= now) {
+                    _timer_queue.pop();  // 先从队列中移除
+
+                    bool repeat = timer->repeat;  // 缓存repeat标志
+                    timer->callback(timer->loop, timer, timer->data);  // 执行回调
+
+                    if (repeat && !timer->deleted) {  // 如果是重复定时器且仍然活跃
+                        // 计算下一个到期时间并重新启动定时器
+                        timer->start_time = std::chrono::steady_clock::now();  // 重置开始时间
+                        _timer_queue.push(timer);  // 重新加入队列
                     } else {
-                        stop_timer_event(timer);
+                        stop_timer_event(timer);  // 停止定时器
+                        delete timer;
                     }
+                } else {
+                    break;  // 下一个定时器尚未到期
                 }
             } else {
-                break;
+                _timer_queue.pop();  // 如果定时器不再活跃，直接移除
             }
         }
     }

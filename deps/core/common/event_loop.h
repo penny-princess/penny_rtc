@@ -90,6 +90,7 @@ namespace core {
         bool repeat = false;
         unsigned int usec = 1000;
         int active = false;
+        bool deleted = false;
         std::chrono::time_point<std::chrono::steady_clock> start_time;
 
         TimerEvent(EventLoop* loop, timer_callback callback, void* data,const bool repeat)

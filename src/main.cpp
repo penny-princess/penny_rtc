@@ -30,8 +30,9 @@ int init_server() {
 
 int main() {
     logger = Logger::instance();
-    logger->init();
     logger->set_level(INFO);
+    logger->init();
+
 
     signal(SIGINT, process_signal);
     signal(SIGTERM, process_signal);

@@ -1,7 +1,9 @@
-//
-// Created by penny_developers@outlook.com on 2024-07-08.
-// Copyright (c) 2024 penny_developers@outlook.com . All rights reserved.
-//
+
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/tcp.h>
+#include "logger.h"
 
 #include "socket.h"
 
@@ -9,18 +11,20 @@ namespace core {
 
 int create_tcp_server(const char* addr, int port) {
     // 1. 创建socket
-    int fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (-1 == fd) {
-        NET_LOG(NET_ERROR) << "create socket error, errno: " << errno << ", error: " << strerror(errno);
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (-1 == sock) {
+        LOG(WARN) << "create socket error, errno: " << errno
+            << ", error: " << strerror(errno);
         return -1;
     }
 
     // 2. 设置SO_REUSEADDR
     int on = 1;
-    int ret = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+    int ret = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
     if (-1 == ret) {
-        NET_LOG(NET_ERROR) << "setsockopt SO_REUSEADDR error, errno: " << errno << ", error: " << strerror(errno);
-        close(fd);
+        LOG(WARN) << "setsockopt SO_REUSEADDR error, errno: " << errno
+            << ", error: " << strerror(errno);
+        close(sock);
         return -1;
     }
 
@@ -31,28 +35,30 @@ int create_tcp_server(const char* addr, int port) {
     sa.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (addr && inet_aton(addr, &sa.sin_addr) == 0) {
-        NET_LOG(NET_ERROR) << "invalid address";
-        close(fd);
+        LOG(WARN) << "invalid address";;
+        close(sock);
         return -1;
     }
     
     // 4. bind
-    ret = bind(fd, (struct sockaddr*)&sa, sizeof(sa));
+    ret = bind(sock, (struct sockaddr*)&sa, sizeof(sa));
     if (-1 == ret) {
-        NET_LOG(NET_ERROR) << "bind error, errno: " << errno << ", error: " << strerror(errno);
-        close(fd);
+        LOG(WARN) << "bind error, errno: " << errno
+            << ", error: " << strerror(errno);
+        close(sock);
         return -1;
     }
 
     // 5. listen
-    ret = listen(fd, 4095);
+    ret = listen(sock, 4095);
     if (-1 == ret) {
-        NET_LOG(NET_ERROR) << "listen error, errno: " << errno << ", error: " << strerror(errno);
-        close(fd);
+        LOG(WARN) << "listen error, errno: " << errno
+            << ", error: " << strerror(errno);
+        close(sock);
         return -1;
     }
 
-    return fd;
+    return sock;
 }
 
 int generic_accept(int sock, struct sockaddr* sa, socklen_t* len) {
@@ -64,7 +70,8 @@ int generic_accept(int sock, struct sockaddr* sa, socklen_t* len) {
             if (EINTR == errno) {
                 continue;
             } else {
-                NET_LOG(NET_ERROR) << "tcp accept error: " << strerror(errno) << ", errno: " << errno;
+                LOG(WARN) << "tcp accept error: " << strerror(errno)
+                    << ", errno: " << errno;
                 return -1;
             }
         }
@@ -97,12 +104,13 @@ int tcp_accept(int sock, char* host, int* port) {
 int sock_setnonblock(int sock) {
     int flags = fcntl(sock, F_GETFL);
     if (-1 == flags) {
-        NET_LOG(NET_ERROR) << "fcntl(F_GETFL) error: " << strerror(errno) << ", errno: " << errno << ", fd: " << sock;
+        LOG(WARN) << "fcntl(F_GETFL) error: " << strerror(errno)
+            << ", errno: " << errno << ", fd: " << sock;
         return -1;
     }
 
     if (-1 == fcntl(sock, F_SETFL, flags | O_NONBLOCK)) {
-        NET_LOG(NET_ERROR) << "fcntl(F_SETFL) error: " << strerror(errno)
+        LOG(WARN) << "fcntl(F_SETFL) error: " << strerror(errno)
             << ", errno: " << errno << ", fd: " << sock;
         return -1;
     }
@@ -110,11 +118,12 @@ int sock_setnonblock(int sock) {
     return 0;
 }
 
-int sock_set_nodelay(int sock) {
+int sock_setnodelay(int sock) {
     int yes = 1;
     int ret = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &yes, sizeof(yes));
     if (-1 == ret) {
-        NET_LOG(NET_ERROR) << "set nodelay error: " << strerror(errno) << ", errno: " << errno << ", fd: " << sock;
+        LOG(WARN) << "set nodelay error: " << strerror(errno)
+            << ", errno: " << errno << ", fd: " << sock;
         return -1;
     }
     return 0;
@@ -155,11 +164,12 @@ int sock_read_data(int sock, char* buf, size_t len) {
         if (EAGAIN == errno) {
             nread = 0;
         } else {
-            NET_LOG(NET_ERROR) << "sock read failed, error: " << strerror(errno) << ", errno: " << errno << ", fd: " << sock;
+            LOG(WARN) << "sock read failed, error: " << strerror(errno)
+                << ", errno: " << errno << ", fd: " << sock;
             return -1;
         }
     } else if (0 == nread) {
-        NET_LOG(NET_ERROR) << "connection closed by peer, fd: " << sock;
+        LOG(WARN) << "connection closed by peer, fd: " << sock;
         return -1;
     }
 
@@ -172,7 +182,7 @@ int sock_write_data(int sock, const char* buf, size_t len) {
         if (EAGAIN == errno) {
             nwritten = 0;
         } else {
-            NET_LOG(NET_ERROR) << "sock write failed, error: " << strerror(errno)
+            LOG(WARN) << "sock write failed, error: " << strerror(errno)
                 << ", errno: " << errno << ", fd: " << sock;
             return -1;
         }
@@ -181,6 +191,6 @@ int sock_write_data(int sock, const char* buf, size_t len) {
     return nwritten;
 }
 
-}
+} // namespace xrtc
 
 

@@ -18,13 +18,13 @@ namespace core {
 
     class TimerEvent;
 
-    using io_callback = std::function<void(EventLoop *loop,IOEvent *event, int fd, int events,void *data)>;
+    using io_callback = std::function<void(EventLoop *loop,IOEvent *event, int fd, uint32_t events,void *data)>;
     using timer_callback = std::function<void( EventLoop *loop, TimerEvent *w,void *data)>;
 
     class EventLoop {
     public:
-        static const unsigned int READ = EPOLLIN;
-        static const unsigned int WRITE = EPOLLOUT;
+        static const uint32_t READ = EPOLLIN;
+        static const uint32_t WRITE = EPOLLOUT;
         
         explicit EventLoop(void * owner);
 
@@ -41,7 +41,7 @@ namespace core {
         void *_owner = nullptr;
         bool _running = false;
         std::vector<epoll_event> _epoll_events;
-        std::unordered_map<int, IOEvent*> _events;
+        std::unordered_map<int, IOEvent*> _io_events_map;
         std::unordered_map<int, TimerEvent*> _timers;
         std::priority_queue<TimerEvent*, std::vector<TimerEvent*>,  std::greater<>> _timer_queue;
 
@@ -50,7 +50,7 @@ namespace core {
 
         void start_io_event(IOEvent *io_event, int fd, int mask);
 
-        void stop_io_event(const IOEvent *io_event);
+        void stop_io_event(const IOEvent *io_event, uint32_t mask);
 
         void delete_io_event(const IOEvent *io_event);
 
@@ -76,7 +76,7 @@ namespace core {
             EventLoop* loop = nullptr;
             io_callback callback;
             void* data = nullptr;
-            int events = -1;
+            uint32_t events;
             int fd = -1;
         public:
             IOEvent(EventLoop* loop, io_callback callback, void* data):loop(loop),callback(std::move(callback)),data(data){}
@@ -97,7 +97,7 @@ namespace core {
             : loop(loop), callback(std::move(callback)), data(data), repeat(repeat) {}
 
         std::chrono::time_point<std::chrono::steady_clock> get_expiry_time() const {
-            return start_time + std::chrono::milliseconds(usec);
+            return start_time + std::chrono::microseconds(usec);
         }
 
         bool operator>(const TimerEvent& other) const {

@@ -43,7 +43,7 @@ namespace penny {
             LOG(WARN) << "thread already start, worker_id:" << _worker_id;
             return -1;
         }
-        _thread = new std::thread([this]() {
+        _thread = new std::thread([=]() {
             LOG(INFO) << "worker start";
             _loop->start();
             LOG(INFO) << "worker end, worker_id:" << _worker_id;
@@ -68,13 +68,12 @@ namespace penny {
 
     void Worker::_handle_new_connection(int client_fd) {
         LOG(DEBUG) << "_worker_id: ["<< _worker_id << "]" << "fd: ["<< client_fd << "]";
-        sock_set_nodelay(client_fd);
+        sock_setnodelay(client_fd);
         sock_setnonblock(client_fd);
 
         Handle* handle = new Handle();
         sock_peer_to_str(client_fd, handle->ip, &(handle->port));
         handle->set_timeout(std::bind_front(&Worker::_close_connection,this));
-        handle->set_response(std::bind_front(&Worker::_handle_response,this));
         handle->set_response(std::bind_front(&Worker::_handle_response,this));
         handle->fd = client_fd;
         handle->connect();
@@ -82,9 +81,8 @@ namespace penny {
         _loop->start_io_event(handle->io_event, client_fd, EventLoop::READ);
 
         handle->timer_event = _loop->create_timer_event(std::bind_front(&Worker::_handle_timeout, this ), handle, true);
-        _loop->start_timer_event(handle->timer_event, 1* 1000);
+        _loop->start_timer_event(handle->timer_event, 1* 1000 * 1000);
 
-        handle->last_interaction = EventLoop::now();
         handle->last_interaction = EventLoop::now();
 
         if ((size_t)client_fd >= _connections.size()) {
@@ -97,10 +95,6 @@ namespace penny {
     void Worker::_handle_request(EventLoop*, IOEvent*, int fd, int event, void*) {
         if(event & EventLoop::READ) {
             _read_request(fd);
-        }
-
-        if(event & EventLoop::WRITE) {
-            _write_response(fd);
         }
 
         if(event & EventLoop::WRITE) {
@@ -123,7 +117,6 @@ namespace penny {
         nread = sock_read_data(fd, c->_request_buffer.data() + qb_len, read_len);
 
         c->last_interaction = EventLoop::now();
-        c->last_interaction = EventLoop::now();
 
         if (-1 == nread) {
             _close_connection(c);
@@ -135,7 +128,6 @@ namespace penny {
         int ret = _handle_request_buffer(c);
         if (ret != 0) {
             _close_connection(c);
-            LOG(ERROR) << "WLF";
             LOG(ERROR) << "WLF";
             return;
         }
@@ -180,8 +172,8 @@ namespace penny {
         }
         while (!c->reply_list.empty()) {
             std::string reply = c->reply_list.front();
-            LOG(INFO) << "shit try agin:" << c->is_fd_valid(fd) << ", and fd is:" << fd << "and c->fd is:" << c->is_fd_valid(c->fd);
-            int nwritten = sock_write_data(c->fd, reply.data() + c->cur_resp_pos, reply.size() - c->cur_resp_pos);
+            int nwritten = sock_write_data(c->fd, reply.data() + c->cur_resp_pos,
+                                                            reply.size() - c->cur_resp_pos);
             if (-1 == nwritten) {
                 _close_connection(c);
                 return;
@@ -190,6 +182,8 @@ namespace penny {
             } else if ((nwritten + c->cur_resp_pos) >= reply.size()) {
                 // 写入完成
                 c->reply_list.pop_front();
+                reply.clear();
+                std::string().swap(reply);
                 c->cur_resp_pos = 0;
                 LOG(INFO) << "write finished, fd: " << c->fd << ", worker_id: " << _worker_id;
             } else {
@@ -199,7 +193,7 @@ namespace penny {
 
         c->last_interaction = EventLoop::now();
         if (c->reply_list.empty()) {
-            _loop->stop_io_event(c->io_event);
+            _loop->stop_io_event(c->io_event, EventLoop::WRITE);
             LOG(INFO) << "stop write event, fd: " << c->fd << ", worker_id: " << _worker_id;
         }
 
@@ -223,7 +217,7 @@ namespace penny {
 
     void Worker::_handle_timeout(EventLoop *, TimerEvent *, void *data) {
         auto* handle = (Handle*)(data);
-        if (EventLoop::now() - handle->last_interaction >= 5 * 1000) {
+        if (EventLoop::now() - handle->last_interaction >= 4 * 1000 * 1000) {
             handle->timeout(handle);
         }
     }

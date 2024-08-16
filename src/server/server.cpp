@@ -33,7 +33,7 @@ namespace penny {
         _pipe_event = _loop->create_io_event(std::bind_front(&Server::_notify_receive,this), this);
         _loop->start_io_event(_pipe_event, _notify_receive_fd, EventLoop::READ);
 
-        _listen_fd = create_tcp_server("0.0.0.0", 9000);
+        _listen_fd = create_tcp_server("0.0.0.0", 8000);
         LOG(ERROR)  << "_listen_fd: "<< _listen_fd;
         if(_listen_fd == -1) {
             return -1;
@@ -53,7 +53,7 @@ namespace penny {
             LOG(WARN) << "thread already start";
             return -1;
         }
-        _thread = new std::thread([this]() {
+        _thread = new std::thread([=]() {
             LOG(INFO) << "server starting";
             _loop->start();
             LOG(INFO) << "server end";

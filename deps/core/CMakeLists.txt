@@ -14,5 +14,4 @@ add_library(core
 )
 
 target_precompile_headers(core PUBLIC pch/pch.h)
-set_target_properties(core PROPERTIES UNITY_BUILD ON)
 target_include_directories(core PUBLIC event_loop net pch common logger include)
